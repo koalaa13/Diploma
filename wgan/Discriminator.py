@@ -11,7 +11,7 @@ class Discriminator(nn.Module):
 
         modules = []
         for i in range(len(dims) - 1):
-            modules.append(*block(dims[i], dims[i + 1]))
+            modules.extend(block(dims[i], dims[i + 1]))
         modules.append(nn.Linear(dims[len(dims) - 1], 1))
         self.model = nn.Sequential(*modules)
 

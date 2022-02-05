@@ -12,9 +12,9 @@ class Generator(nn.Module):
             layers.append(nn.LeakyReLU(0.2, inplace=True))
             return layers
 
-        modules = []
-        for i in range(len(dims) - 2):
-            modules.append(*block(dims[i], dims[i + 1]))
+        modules = [*block(dims[0], dims[1], normalize=False)]
+        for i in range(1, len(dims) - 2):
+            modules.extend(block(dims[i], dims[i + 1]))
         modules.append(nn.Linear(dims[len(dims) - 2], dims[len(dims) - 1]))
         modules.append(nn.Tanh())
         self.model = nn.Sequential(*modules)
