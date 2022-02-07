@@ -19,6 +19,8 @@ class Generator(nn.Module):
         modules.append(nn.Tanh())
         self.model = nn.Sequential(*modules)
 
-    def forward(self, z):
+    def forward(self, z, obj_shape):
         # mb resize result here
+        img = self.model(z)
+        img = img.view(img.shape[0], *obj_shape)
         return self.model(z)

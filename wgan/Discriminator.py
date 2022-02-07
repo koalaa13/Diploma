@@ -16,5 +16,5 @@ class Discriminator(nn.Module):
         self.model = nn.Sequential(*modules)
 
     def forward(self, obj):
-        # mb resize input obj here
-        return self.model(obj)
+        res = obj.view(obj.shape[0], -1)
+        return self.model(res)

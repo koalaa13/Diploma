@@ -17,7 +17,9 @@ print(device)
 parser = argparse.ArgumentParser()
 parser.add_argument("--latent_dim", type=int, default=100, help="dimensionality of the latent space")
 # for example for images = height * width * channels_count
-parser.add_argument("--output_generator_dim", type=int, default=28 * 28 * 1, help="output size of generator")
+parser.add_argument("--channels", type=int, default=1, help="color channels of image")
+parser.add_argument("--img_width", type=int, default=28, help="width of image")
+parser.add_argument("--img_height", type=int, default=28, help="height of image")
 parser.add_argument("--lr", type=float, default=0.00005, help="learning rate")
 parser.add_argument("--batch_size", type=int, default=64, help="size of a batch to train")
 parser.add_argument("--n_epochs", type=int, default=300, help="epochs count")
@@ -27,12 +29,16 @@ parser.add_argument("--sample_interval", type=int, default=400, help="interval b
 options = parser.parse_args()
 print(options)
 
-generator_dims = [options.latent_dim, 128, 256, 512, 1024, options.output_generator_dim]
-discriminator_dims = [options.output_generator_dim, 512, 256]
+output_generator_dim = options.channels * options.img_width * options.img_height
+img_shape = (options.channels, options.img_width, options.img_height)
+
+generator_dims = [options.latent_dim, 128, 256, 512, 1024, output_generator_dim]
+discriminator_dims = [output_generator_dim, 512, 256]
 
 generator = Generator(generator_dims).to(device)
 discriminator = Discriminator(discriminator_dims).to(device)
 
+os.makedirs("images", exist_ok=True)
 os.makedirs("../data/mnist", exist_ok=True)
 dataloader = torch.utils.data.DataLoader(
     datasets.MNIST(
@@ -61,7 +67,7 @@ for epoch in range(options.n_epochs):
         # Generate the same count of images as real ones
         z = torch.randn(imgs.shape[0], options.latent_dim)
 
-        fake_imgs = generator(z).detach()
+        fake_imgs = generator(z, img_shape).detach()
         loss_D = -torch.mean(discriminator(real_images)) + torch.mean(discriminator(fake_imgs))
 
         loss_D.backward()
@@ -79,7 +85,7 @@ for epoch in range(options.n_epochs):
 
             optimizer_G.zero_grad()
 
-            gen_imgs = generator(z)
+            gen_imgs = generator(z, img_shape)
             loss_G = -torch.mean(discriminator(gen_imgs))
 
             loss_G.backward()
