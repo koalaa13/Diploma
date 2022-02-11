@@ -23,4 +23,4 @@ class Generator(nn.Module):
         # mb resize result here
         img = self.model(z)
         img = img.view(img.shape[0], *obj_shape)
-        return self.model(z)
+        return img
