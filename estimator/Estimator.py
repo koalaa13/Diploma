@@ -25,12 +25,18 @@ class Estimator:
         values, scores = _get_observation_pairs(self.study, ["x0"], False, False)
         indices_below, indices_above = _split_observation_pairs(scores, self.study.sampler._gamma(len(scores)))
         trials = self.study.get_trials()
-        self.goods = []
+        self.points = []
+        # True = good, False = bad
         for ind in indices_below:
             cur_point = []
             for i in range(self.embedding_size):
                 cur_point.append(float(trials[ind].params["x" + str(i)]))
-            self.goods.append(cur_point)
+            self.points.append((cur_point, True))
+        for ind in indices_above:
+            cur_point = []
+            for i in range(self.embedding_size):
+                cur_point.append(float(trials[ind].params["x" + str(i)]))
+            self.points.append((cur_point, False))
 
     # decide a shape of an embedding now it's just a vector
     # do something with null if we will have them in embeddings. for example optuna has conditionals values
@@ -61,9 +67,16 @@ class Estimator:
         return study
 
     def check(self, embedding):
-        # TODO here should decide is embedding good or not without launching a net
-        # TODO for example calc some metrics between self.goods and given embedding
-        res = 0.0
-        for i in self.goods:
-            res += metrics(embedding, i)
-        return res
+        # take some radius for k nearest neighbours method
+        r = 1337
+        count_near_good = 0
+        count_near_bad = 0
+        for p in self.points:
+            dist = metrics(embedding, p)
+            if dist <= r:
+                # is good
+                if p[1]:
+                    count_near_good += 1
+                else:
+                    count_near_bad += 1
+        return count_near_good > count_near_bad
