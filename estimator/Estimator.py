@@ -80,15 +80,24 @@ class Estimator:
         study.optimize(self.objective, n_trials=n_trials)
         return study
 
-    # Chebyshev's metrics
+    # Euclidean metrics
     @staticmethod
     def __metrics(a, b):
+        inf = 1e9  # dist between None and non-None
         if len(a) != len(b):
-            raise Exception("Vectors should be same size")
-        res = math.fabs(a[0] - b[0])
+            raise Exception("Embeddings should be same size")
+        if len(a) == 0:
+            return 0
+        res = 0
         for i in range(len(a)):
-            res = max(res, math.fabs(a[i] - b[i]))
-        return res
+            if len(a[i]) != len(b[i]):
+                raise Exception("Embeddings have different sizes at string: " + str(i))
+            for j in range(len(a[i])):
+                if (a[i][j] is None) or (b[i][j] is None):
+                    res += inf
+                else:
+                    res += (a[i][j] - b[i][j]) ** 2
+        return math.sqrt(res)
 
     def check(self, embedding):
         # take some radius for k nearest neighbours method
