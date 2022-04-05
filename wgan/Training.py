@@ -10,6 +10,7 @@ from time import process_time
 
 from wgan.Discriminator import Discriminator
 from wgan.Generator import Generator
+from wgan.NNEmbeddingDataset import NNEmbeddingDataset
 
 if __name__ == '__main__':
     cuda = torch.cuda.is_available()
@@ -18,10 +19,8 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--latent_dim", type=int, default=100, help="dimensionality of the latent space")
-    # for example for images = height * width * channels_count
-    parser.add_argument("--channels", type=int, default=1, help="color channels of image")
-    parser.add_argument("--img_width", type=int, default=28, help="width of image")
-    parser.add_argument("--img_height", type=int, default=28, help="height of image")
+    parser.add_argument("--embedding_width", type=int, default=500, help="width of an embedding")
+    parser.add_argument("--embedding_height", type=int, default=500, help="height of an embedding")
     parser.add_argument("--lr", type=float, default=0.00005, help="learning rate")
     parser.add_argument("--batch_size", type=int, default=64, help="size of a batch to train")
     parser.add_argument("--n_epochs", type=int, default=300, help="epochs count")
@@ -31,24 +30,19 @@ if __name__ == '__main__':
     options = parser.parse_args()
     print(options)
 
-    output_generator_dim = options.channels * options.img_width * options.img_height
-    img_shape = (options.channels, options.img_width, options.img_height)
+    output_generator_dim = options.embedding_width * options.embedding_height
+    obj_shape = (options.embedding_width, options.embedding_height)
 
-    generator_dims = [options.latent_dim, 128, 256, 512, 1024, output_generator_dim]
-    discriminator_dims = [output_generator_dim, 512, 256]
+    generator_dims = [options.latent_dim, 128, 256, 512, 1024, 2048, 4096, 8192, output_generator_dim]
+    discriminator_dims = [output_generator_dim, 2048, 1024, 512, 256]
 
     generator = Generator(generator_dims).to(device)
     discriminator = Discriminator(discriminator_dims).to(device)
 
     os.makedirs("images", exist_ok=True)
-    os.makedirs("../data/mnist", exist_ok=True)
+    os.makedirs("../data/nn_embedding", exist_ok=True)
     dataloader = torch.utils.data.DataLoader(
-        datasets.MNIST(
-            "../data/mnist",
-            train=True,
-            download=True,
-            transform=transforms.Compose([transforms.ToTensor(), transforms.Normalize([0.5], [0.5])])
-        ),
+        NNEmbeddingDataset("../data/nn_embedding", options.embedding_width, options.embedding_height),
         batch_size=options.batch_size,
         shuffle=True,
         num_workers=8,
@@ -60,8 +54,8 @@ if __name__ == '__main__':
 
     batches_cnt = 0
     for epoch in range(options.n_epochs):
-        for i, (imgs, _) in enumerate(dataloader):
-            real_images = imgs.to(device)
+        for i, objs in enumerate(dataloader):
+            real_images = objs.to(device)
 
             # --------------------
             #  Train Discriminator
@@ -69,10 +63,10 @@ if __name__ == '__main__':
             optimizer_D.zero_grad()
 
             # Generate the same count of images as real ones
-            z = torch.randn(imgs.shape[0], options.latent_dim).to(device)
+            z = torch.randn(objs.shape[0], options.latent_dim).to(device)
 
-            fake_imgs = generator(z, img_shape).detach()
-            loss_D = -torch.mean(discriminator(real_images)) + torch.mean(discriminator(fake_imgs))
+            fake_objs = generator(z, obj_shape).detach()
+            loss_D = -torch.mean(discriminator(real_images)) + torch.mean(discriminator(fake_objs))
 
             loss_D.backward()
             optimizer_D.step()
@@ -89,8 +83,8 @@ if __name__ == '__main__':
 
                 optimizer_G.zero_grad()
 
-                gen_imgs = generator(z, img_shape)
-                loss_G = -torch.mean(discriminator(gen_imgs))
+                gen_objs = generator(z, obj_shape)
+                loss_G = -torch.mean(discriminator(gen_objs))
 
                 loss_G.backward()
                 optimizer_G.step()
@@ -102,6 +96,6 @@ if __name__ == '__main__':
                         loss_G.item())
                 )
 
-            if batches_cnt % options.sample_interval == 0:
-                save_image(fake_imgs.data[:25], "images/%d.png" % batches_cnt, nrow=5, normalize=True)
+            # if batches_cnt % options.sample_interval == 0:
+            #     save_image(fake_objs.data[:25], "images/%d.png" % batches_cnt, nrow=5, normalize=True)
             batches_cnt += 1
