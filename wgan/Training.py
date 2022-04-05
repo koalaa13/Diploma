@@ -41,6 +41,7 @@ if __name__ == '__main__':
 
     os.makedirs("images", exist_ok=True)
     os.makedirs("../data/nn_embedding", exist_ok=True)
+    # TODO mb should normalize dataset
     dataloader = torch.utils.data.DataLoader(
         NNEmbeddingDataset("../data/nn_embedding", options.embedding_width, options.embedding_height),
         batch_size=options.batch_size,

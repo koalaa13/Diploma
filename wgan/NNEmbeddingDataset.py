@@ -5,12 +5,13 @@ import os
 import torch
 from torch.utils.data import Dataset
 from torch.utils.data.dataset import T_co
+import numpy as np
+from torchvision.transforms import transforms
 
 
 class NNEmbeddingDataset(Dataset):
-    def __init__(self, root_dir, embedding_width, embedding_height, transform=None):
+    def __init__(self, root_dir, embedding_width, embedding_height):
         self.root_dir = root_dir
-        self.transform = transform
         self.embedding_width = embedding_width
         self.embedding_height = embedding_height
         self.padding_element = 0
@@ -38,10 +39,9 @@ class NNEmbeddingDataset(Dataset):
                     embedding[i][j] = self.none_as_number
         return embedding
 
-    def __getitem__(self, index) -> T_co:
-        if torch.is_tensor(index):
-            index = index.tolist()
+    def __getitem__(self, index: int) -> T_co:
         emb_file = os.path.join(self.root_dir, str(index) + '.emb')
         with open(emb_file) as f:
             embedding = json.load(f)
-        return self.__change_none_to_number(self.__add_padding(embedding))
+        embedding = self.__change_none_to_number(self.__add_padding(embedding))
+        return torch.tensor(embedding)
