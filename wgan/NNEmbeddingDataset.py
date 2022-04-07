@@ -3,6 +3,7 @@ import json
 import os
 
 import torch
+from torch.nn.functional import normalize
 from torch.utils.data import Dataset
 from torch.utils.data.dataset import T_co
 import numpy as np
@@ -14,8 +15,8 @@ class NNEmbeddingDataset(Dataset):
         self.root_dir = root_dir
         self.embedding_width = embedding_width
         self.embedding_height = embedding_height
-        self.padding_element = 0
-        self.none_as_number = -1
+        self.padding_element = 0.0
+        self.none_as_number = -1.0
 
     def __len__(self):
         return len([name for name in os.listdir(self.root_dir) if os.path.isfile(os.path.join(self.root_dir, name))])
@@ -37,6 +38,8 @@ class NNEmbeddingDataset(Dataset):
             for j in range(len(embedding[i])):
                 if embedding[i][j] is None:
                     embedding[i][j] = self.none_as_number
+                else:
+                    embedding[i][j] = float(embedding[i][j])
         return embedding
 
     def __getitem__(self, index: int) -> T_co:
@@ -44,4 +47,5 @@ class NNEmbeddingDataset(Dataset):
         with open(emb_file) as f:
             embedding = json.load(f)
         embedding = self.__change_none_to_number(self.__add_padding(embedding))
-        return torch.tensor(embedding)
+        embedding = normalize(torch.tensor(embedding))
+        return embedding

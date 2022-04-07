@@ -10,7 +10,7 @@ from wgan.NNEmbeddingDataset import NNEmbeddingDataset
 #     transform=transforms.Compose([transforms.ToTensor(), transforms.Normalize([0.5], [0.5])])
 # )
 
-dataset = NNEmbeddingDataset("data/nn_embedding", 50, 50)
+dataset = NNEmbeddingDataset("data/nn_embedding", 500, 500)
 
 dataloader = torch.utils.data.DataLoader(
     dataset,

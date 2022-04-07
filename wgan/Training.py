@@ -22,7 +22,7 @@ if __name__ == '__main__':
     parser.add_argument("--embedding_width", type=int, default=500, help="width of an embedding")
     parser.add_argument("--embedding_height", type=int, default=500, help="height of an embedding")
     parser.add_argument("--lr", type=float, default=0.00005, help="learning rate")
-    parser.add_argument("--batch_size", type=int, default=64, help="size of a batch to train")
+    parser.add_argument("--batch_size", type=int, default=2, help="size of a batch to train")
     parser.add_argument("--n_epochs", type=int, default=300, help="epochs count")
     parser.add_argument("--clip_value", type=float, default=0.01, help="lower and upper bound for disc weights")
     parser.add_argument("--n_critic", type=int, default=5, help="train generator every n_critic iterations")
@@ -33,21 +33,19 @@ if __name__ == '__main__':
     output_generator_dim = options.embedding_width * options.embedding_height
     obj_shape = (options.embedding_width, options.embedding_height)
 
-    generator_dims = [options.latent_dim, 128, 256, 512, 1024, 2048, 4096, 8192, output_generator_dim]
-    discriminator_dims = [output_generator_dim, 2048, 1024, 512, 256]
+    generator_dims = [options.latent_dim, 128, 256, 512, 1024, output_generator_dim]
+    discriminator_dims = [output_generator_dim, 512, 256]
 
     generator = Generator(generator_dims).to(device)
     discriminator = Discriminator(discriminator_dims).to(device)
 
-    os.makedirs("images", exist_ok=True)
     os.makedirs("../data/nn_embedding", exist_ok=True)
-    # TODO mb should normalize dataset
     dataloader = torch.utils.data.DataLoader(
         NNEmbeddingDataset("../data/nn_embedding", options.embedding_width, options.embedding_height),
         batch_size=options.batch_size,
         shuffle=True,
-        num_workers=8,
-        pin_memory=True
+        # num_workers=8,
+        # pin_memory=True
     )
 
     optimizer_G = torch.optim.RMSprop(generator.parameters(), lr=options.lr)
@@ -56,18 +54,17 @@ if __name__ == '__main__':
     batches_cnt = 0
     for epoch in range(options.n_epochs):
         for i, objs in enumerate(dataloader):
-            real_images = objs.to(device)
+            real_objs = objs.to(device)
 
             # --------------------
             #  Train Discriminator
             # --------------------
             optimizer_D.zero_grad()
 
-            # Generate the same count of images as real ones
             z = torch.randn(objs.shape[0], options.latent_dim).to(device)
 
             fake_objs = generator(z, obj_shape).detach()
-            loss_D = -torch.mean(discriminator(real_images)) + torch.mean(discriminator(fake_objs))
+            loss_D = -torch.mean(discriminator(real_objs)) + torch.mean(discriminator(fake_objs))
 
             loss_D.backward()
             optimizer_D.step()
@@ -84,7 +81,7 @@ if __name__ == '__main__':
 
                 optimizer_G.zero_grad()
 
-                gen_objs = generator(z, obj_shape)
+                gen_objs = generator(z, obj_shape).detach()
                 loss_G = -torch.mean(discriminator(gen_objs))
 
                 loss_G.backward()
