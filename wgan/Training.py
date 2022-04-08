@@ -24,9 +24,9 @@ if __name__ == '__main__':
     parser.add_argument("--embedding_height", type=int, default=500, help="height of an embedding")
     parser.add_argument("--lr", type=float, default=0.00005, help="learning rate")
     parser.add_argument("--batch_size", type=int, default=2, help="size of a batch to train")
-    parser.add_argument("--n_epochs", type=int, default=20, help="epochs count")
+    parser.add_argument("--n_epochs", type=int, default=100, help="epochs count")
     parser.add_argument("--clip_value", type=float, default=0.01, help="lower and upper bound for disc weights")
-    parser.add_argument("--n_critic", type=int, default=3, help="train generator every n_critic iterations")
+    parser.add_argument("--n_critic", type=int, default=4, help="train generator every n_critic iterations")
     parser.add_argument("--sample_interval", type=int, default=400, help="interval between image samples")
     options = parser.parse_args()
     print(options)
@@ -40,7 +40,7 @@ if __name__ == '__main__':
     generator = Generator(generator_dims).to(device)
     discriminator = Discriminator(discriminator_dims).to(device)
 
-    need_transform = True
+    need_transform = False
     if need_transform:
         print("STARTED DATASET TRANSFORM")
         Transformer(options.embedding_width, options.embedding_height).transform()
@@ -87,7 +87,7 @@ if __name__ == '__main__':
 
                 optimizer_G.zero_grad()
 
-                gen_objs = generator(z, obj_shape).detach()
+                gen_objs = generator(z, obj_shape)
                 loss_G = -torch.mean(discriminator(gen_objs))
 
                 loss_G.backward()
@@ -103,3 +103,14 @@ if __name__ == '__main__':
             # if batches_cnt % options.sample_interval == 0:
             #     save_image(fake_objs.data[:25], "images/%d.png" % batches_cnt, nrow=5, normalize=True)
             batches_cnt += 1
+
+    need_example = False
+    if need_example:
+        generator.eval()
+        torch.set_printoptions(profile="full")
+        os.makedirs("examples", exist_ok=True)
+        z = torch.randn(1, options.latent_dim).to(device)
+        fake = generator(z, obj_shape).detach()
+        with open("examples/generated_example", "w+") as f:
+            print(fake, file=f)
+
