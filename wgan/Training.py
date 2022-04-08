@@ -8,6 +8,7 @@ import torch.cuda
 from torch.utils.data import DataLoader
 from time import process_time
 
+from utils.DatasetTransformer import Transformer
 from wgan.Discriminator import Discriminator
 from wgan.Generator import Generator
 from wgan.NNEmbeddingDataset import NNEmbeddingDataset
@@ -23,9 +24,9 @@ if __name__ == '__main__':
     parser.add_argument("--embedding_height", type=int, default=500, help="height of an embedding")
     parser.add_argument("--lr", type=float, default=0.00005, help="learning rate")
     parser.add_argument("--batch_size", type=int, default=2, help="size of a batch to train")
-    parser.add_argument("--n_epochs", type=int, default=300, help="epochs count")
+    parser.add_argument("--n_epochs", type=int, default=20, help="epochs count")
     parser.add_argument("--clip_value", type=float, default=0.01, help="lower and upper bound for disc weights")
-    parser.add_argument("--n_critic", type=int, default=5, help="train generator every n_critic iterations")
+    parser.add_argument("--n_critic", type=int, default=3, help="train generator every n_critic iterations")
     parser.add_argument("--sample_interval", type=int, default=400, help="interval between image samples")
     options = parser.parse_args()
     print(options)
@@ -39,9 +40,14 @@ if __name__ == '__main__':
     generator = Generator(generator_dims).to(device)
     discriminator = Discriminator(discriminator_dims).to(device)
 
-    os.makedirs("../data/nn_embedding", exist_ok=True)
+    need_transform = True
+    if need_transform:
+        print("STARTED DATASET TRANSFORM")
+        Transformer(options.embedding_width, options.embedding_height).transform()
+        print("FINISHED DATASET TRANSFORM")
+
     dataloader = torch.utils.data.DataLoader(
-        NNEmbeddingDataset("../data/nn_embedding", options.embedding_width, options.embedding_height),
+        NNEmbeddingDataset("../data/nn_embedding_transformed"),
         batch_size=options.batch_size,
         shuffle=True,
         # num_workers=8,
