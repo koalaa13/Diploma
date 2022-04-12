@@ -1,11 +1,17 @@
 import math
-from functools import partial
+import os
+import sys
 
 import optuna
-from optuna import Trial, Study
+import torch
+import torch.nn.functional as F
+from optuna import Trial
 from optuna.samplers import TPESampler
 from optuna.samplers._tpe.sampler import _get_observation_pairs, _split_observation_pairs
-import numpy as np
+from torch import optim
+
+from embedding.convert import Converter
+from embedding.graph import NeuralNetworkGraph
 
 
 class Estimator:
@@ -13,7 +19,13 @@ class Estimator:
     def __get_param_name(i, j, suffix):
         return "x_" + str(i) + "_" + str(j) + "_" + suffix
 
-    def __init__(self, embedding_width, embedding_height):
+    def __init__(self, embedding_width, embedding_height, train_dataloader, test_dataloader, optimizer, loss):
+        self.inf = math.inf
+        self.train_dataloader = train_dataloader
+        self.test_dataloader = test_dataloader
+        self.optimizer = optimizer
+        self.loss = loss
+
         self.embedding_width = embedding_width
         self.embedding_height = embedding_height
         self.study = self.pre_train()
@@ -52,8 +64,8 @@ class Estimator:
         for i in range(n):
             cur_line = []
             for j in range(m):
-                # decide this values
-                # low and high should be chosen with a margin cuz optuna doesn't search in bounds area
+                # TODO decide this values
+                # TODO low and high should be chosen with a margin cuz optuna doesn't search in bounds area
                 low = -100.0
                 high = 100.0
                 step = 0.1
@@ -70,7 +82,42 @@ class Estimator:
     # TODO this function has to create network from embedding and return some metrics of quality
     # TODO for example accuracy
     def get_quality_from_embedding(self, embedding):
-        raise NotImplementedError
+        graph = NeuralNetworkGraph.get_graph(embedding)
+        filepath = 'tmp/tmp.py'
+        model_name = 'Tmp'
+        folders = os.path.dirname(filepath)
+        os.makedirs(folders, exist_ok=True)
+        Converter(graph, filepath=filepath, model_name=model_name)
+        sys.path.append(folders)
+        # if generated model throws exception while training or testing = generated embedding is very bad
+        try:
+            model = Tmp()
+
+            # train model
+            model.train()
+            n_epoch = 10
+
+            for epoch in range(n_epoch):
+                for data, target in self.train_dataloader:
+                    self.optimizer.zero_grad()
+                    output = model(data)
+                    loss = self.loss(output, target)
+                    loss.backward()
+                    # mb should re-create optimizer for every invocation of get_quality_from_embedding method
+                    self.optimizer.step()
+
+            # testing and calculating accuracy
+            model.eval()
+            correct = 0
+            with torch.no_grad():
+                for data, target in self.test_dataloader:
+                    output = model(data)
+                pred = output.data.max(1, keepdim=True)[1]
+                correct += pred.eq(target.data.view_as(pred)).sum()
+            # return accuracy
+            return 100. * correct / len(self.test_dataloader.dataset)
+        except Exception:
+            return -self.inf
 
     def pre_train(self):
         sampler = TPESampler()
