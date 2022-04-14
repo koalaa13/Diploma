@@ -76,21 +76,22 @@ class Estimator:
                     x_i = None
                 cur_line.append(x_i)
             embedding.append(cur_line)
-        return self.get_quality_from_embedding(embedding)
+        return self.__get_quality_from_embedding(embedding)
 
     # TODO this function has to create network from embedding and return some metrics of quality
     # TODO for example accuracy
-    def get_quality_from_embedding(self, embedding):
-        # generate a file with Pytorch realization of embedded network
-        graph = NeuralNetworkGraph.get_graph(embedding)
-        filepath = 'tmp/tmp.py'
-        model_name = 'Tmp'
-        folders = os.path.dirname(filepath)
-        os.makedirs(folders, exist_ok=True)
-        Converter(graph, filepath=filepath, model_name=model_name)
-        sys.path.append(folders)
+    def __get_quality_from_embedding(self, embedding):
         # if generated model throws exception while training or testing = generated embedding is very bad
         try:
+            # generate a file with Pytorch realization of embedded network
+            graph = NeuralNetworkGraph.get_graph(embedding)
+            filepath = 'tmp/tmp.py'
+            model_name = 'Tmp'
+            folders = os.path.dirname(filepath)
+            os.makedirs(folders, exist_ok=True)
+            Converter(graph, filepath=filepath, model_name=model_name)
+            sys.path.append(folders)
+
             model = Tmp()
 
             # train model
@@ -141,7 +142,9 @@ class Estimator:
             if len(a[i]) != len(b[i]):
                 raise Exception("Embeddings have different sizes at string: " + str(i))
             for j in range(len(a[i])):
-                if (a[i][j] is None) or (b[i][j] is None):
+                if (a[i][j] is None) and (b[i][j] is None):
+                    res += 0.0
+                elif (a[i][j] is None) or (b[i][j] is None):
                     res += inf
                 else:
                     res += (a[i][j] - b[i][j]) ** 2

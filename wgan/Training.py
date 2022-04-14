@@ -1,13 +1,17 @@
 import argparse
 import os
 
+import torchvision
+from torch.nn import BCELoss
 from torchvision import datasets
 import torchvision.transforms as transforms
 from torchvision.utils import save_image
 import torch.cuda
 from torch.utils.data import DataLoader
 from time import process_time
+import torch.nn.functional as F
 
+from estimator.Estimator import Estimator
 from utils.DatasetTransformer import Transformer
 from wgan.Discriminator import Discriminator
 from wgan.Generator import Generator
@@ -28,6 +32,10 @@ if __name__ == '__main__':
     parser.add_argument("--clip_value", type=float, default=0.01, help="lower and upper bound for disc weights")
     parser.add_argument("--n_critic", type=int, default=4, help="train generator every n_critic iterations")
     parser.add_argument("--sample_interval", type=int, default=400, help="interval between image samples")
+    parser.add_argument("--batch_size_train", type=int, default=64,
+                        help="batch size for training generated networks in estimator")
+    parser.add_argument("--batch_size_test", type=int, default=1000,
+                        help="batch size for testing generated networks in estimator")
     options = parser.parse_args()
     print(options)
 
@@ -40,6 +48,34 @@ if __name__ == '__main__':
     generator = Generator(generator_dims).to(device)
     discriminator = Discriminator(discriminator_dims).to(device)
 
+    train_dataloader = torch.utils.data.DataLoader(
+        torchvision.datasets.MNIST('../data/mnist',
+                                   train=True,
+                                   download=True,
+                                   transform=torchvision.transforms.Compose([
+                                       torchvision.transforms.ToTensor(),
+                                       torchvision.transforms.Normalize(
+                                           (0.1307,), (0.3081,))
+                                   ])),
+        batch_size=options.batch_size_train,
+        shuffle=True)
+
+    test_dataloader = torch.utils.data.DataLoader(
+        torchvision.datasets.MNIST("../data/mnist",
+                                   train=False,
+                                   download=True,
+                                   transform=torchvision.transforms.Compose([
+                                       torchvision.transforms.ToTensor(),
+                                       torchvision.transforms.Normalize(
+                                           (0.1307,), (0.3081,))
+                                   ])),
+        batch_size=options.batch_size_test,
+        shuffle=True)
+
+    estimator = Estimator(options.embedding_width, options.embedding_height, train_dataloader, test_dataloader,
+                          F.nll_loss)
+    estimator.pre_train()
+
     need_transform = False
     if need_transform:
         print("STARTED DATASET TRANSFORM")
@@ -47,7 +83,7 @@ if __name__ == '__main__':
         print("FINISHED DATASET TRANSFORM")
 
     dataloader = torch.utils.data.DataLoader(
-        NNEmbeddingDataset("../data/nn_embedding_transformed"),
+        NNEmbeddingDataset("../data/nn_embedding"),
         batch_size=options.batch_size,
         shuffle=True,
         # num_workers=8,
@@ -88,7 +124,14 @@ if __name__ == '__main__':
                 optimizer_G.zero_grad()
 
                 gen_objs = generator(z, obj_shape)
-                loss_G = -torch.mean(discriminator(gen_objs))
+                estimator_feedbacks = []
+                gen_objs_cnt = gen_objs.size(0)
+                # TODO there is some questions about normalization and de-normalization of dataset
+                for k in range(gen_objs_cnt):
+                    estimator_feedbacks.append(int(estimator.check(gen_objs[k])))
+                # mb minus feedback from TPE_Estimator
+                loss_G = -torch.mean(discriminator(gen_objs)) + BCELoss(torch.tensor(estimator_feedbacks),
+                                                                        torch.ones(gen_objs_cnt))
 
                 loss_G.backward()
                 optimizer_G.step()
@@ -113,4 +156,3 @@ if __name__ == '__main__':
         fake = generator(z, obj_shape).detach()
         with open("examples/generated_example", "w+") as f:
             print(fake, file=f)
-
