@@ -28,7 +28,7 @@ class Estimator:
 
         self.embedding_width = embedding_width
         self.embedding_height = embedding_height
-        self.study = self.pre_train()
+        self.study = self.__pre_train()
         values, scores = _get_observation_pairs(self.study, [self.__get_param_name(0, 0)], False, False)
         indices_below, indices_above = _split_observation_pairs(scores, self.study.sampler._gamma(len(scores)))
         trials = self.study.get_trials()
@@ -60,18 +60,19 @@ class Estimator:
 
     def objective(self, trial: Trial):
         n = trial.suggest_int("embedding_height", 1, self.embedding_height)
-        m = trial.suggest_int("embedding_width", 1, self.embedding_width)
+        # m = trial.suggest_int("embedding_width", 1, self.embedding_width)
+        m = self.embedding_width
         embedding = []
         for i in range(n):
             cur_line = []
             for j in range(m):
-                left = -1.
-                right = 1000.
-                step = 1e-5
+                left = -200
+                right = 50
+                # step = 1e-5
                 # left border respond for null probability cuz
                 # null = x_i < 0
                 # mb use another distribution for parameters of embedding
-                x_i = trial.suggest_float(self.__get_param_name(i, j), left, right, step=step)
+                x_i = trial.suggest_int(self.__get_param_name(i, j), left, right)
                 if x_i < 0.0:
                     x_i = None
                 cur_line.append(x_i)
@@ -118,10 +119,11 @@ class Estimator:
                 correct += pred.eq(target.data.view_as(pred)).sum()
             # return accuracy
             return 100. * correct / len(self.test_dataloader.dataset)
-        except Exception:
+        except Exception as e:
+            print(str(e))
             return -self.inf
 
-    def pre_train(self):
+    def __pre_train(self):
         sampler = TPESampler()
         study = optuna.create_study(sampler=sampler, direction='maximize')
         # should do some limitation of pre train here for example count of trials or time limit
