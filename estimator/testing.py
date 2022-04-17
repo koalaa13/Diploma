@@ -29,3 +29,5 @@ test_dataloader = torch.utils.data.DataLoader(
     shuffle=True)
 
 estimator = Estimator(100, 10, train_dataloader, test_dataloader, F.nll_loss)
+# print(estimator.good_center)
+# print(estimator.bad_center)

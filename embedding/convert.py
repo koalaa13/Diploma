@@ -14,8 +14,12 @@ class Converter:
         self.node_to_layer = {}
         self.node_to_operation = {}
         self.tabulation = '    '
-        self.out_dim = {0: self.graph.nodes[0]['output_shape'][1]}
-        self.sequences = {1: [NetworkMapping.map_node(self.graph.nodes[0], 3, self.out_dim[0])]}
+        first_dim_node = 0 if 'output_shape' in self.graph.nodes[0] else next(iter(self.graph.adj[0]))
+        self.out_dim = {0: self.graph.nodes[first_dim_node]['output_shape'][1]}
+        self.sequences = {}
+        self.is_flatten_needed = True
+        self.__default_input_shape = None
+        self.__init_first_sequence()
         self._graph_seq = nx.DiGraph()
         self._graph_seq.add_node(1, **{'op': self.graph.nodes[0]['op']})
         self.node_to_sequence = {0: 1}
@@ -27,6 +31,19 @@ class Converter:
             self.__write_model_init(file, model_name)
             self.__write_layers(file)
             self.__write_forward(file)
+
+    def __init_first_sequence(self):
+        # TODO default input_shape hard coded here
+        if self.graph.nodes[0]['op'] == 'Conv' or self.graph.nodes[0]['op'] == 'BatchNorm' \
+                or self.graph.nodes[0]['op'] == 'MaxPool' or self.graph.nodes[0]['op'] == 'ConvTranspose':
+            self.__default_input_shape = '1'
+            self.sequences = {1: [NetworkMapping.map_node(self.graph.nodes[0], 'in_shape', self.out_dim[0])]}
+        else:
+            self.__default_input_shape = '28 * 28'
+            self.is_flatten_needed = False
+            self.sequences = {
+                1: [NetworkMapping.map_node(self.graph.nodes[0], 'in_shape', self.out_dim[0])]
+            }
 
     def __create_layers(self, cur_node):
         edges = self.graph.adj.get(cur_node)
@@ -46,17 +63,20 @@ class Converter:
                 layer = NetworkMapping.map_node(node, old_dim, self.out_dim[v])
             if len(edges) > 1 \
                     or len(self.graph.pred[v]) > 1 \
-                    or (node['op'] in ['Concat', 'Pad'] and len(self.graph.pred[v]) <= 1):
+                    or (node['op'] in ['Concat', 'Pad', 'ReduceMean'] and len(self.graph.pred[v]) <= 1):
                 current_sequence = len(self.sequences) + 1
-                if node['op'] == 'Pad':
-                    if current_sequence not in self._graph_seq.nodes:
+                if current_sequence not in self._graph_seq.nodes:
+                    if node['op'] == 'Pad':
                         self._graph_seq.add_node(current_sequence, **{'op': node['op'], 'pads': node['pads']})
-                else:
-                    if current_sequence not in self._graph_seq.nodes:
+                    elif node['op'] == 'ReduceMean':
+                        self._graph_seq.add_node(current_sequence, **{'op': node['op'], 'axes': node['axes']})
+                    else:
                         self._graph_seq.add_node(current_sequence, **{'op': node['op']})
             array = self.sequences.get(current_sequence, [])
             if layer:
-                if node['op'] == 'Linear' and 'nn.Flatten()' not in array:
+                if node['op'] in ['Flatten', 'ReduceMean']:
+                    self.is_flatten_needed = False
+                if node['op'] == 'Linear' and self.is_flatten_needed:
                     array.append(NetworkMapping.map_node({'op': 'Flatten'}))
                 if not layer.startswith('#'):
                     array.append(layer)
@@ -139,6 +159,12 @@ class Converter:
                                                f'x_{v} = torch.nn.functional.pad(x_{prev_seq}, {new_pads})',
                                                self.tabulation * 2)
                         cur_x_seq = v
+                elif self._graph_seq.nodes[v]['op'] == 'ReduceMean':
+                    prev_seq = next(iter(self._graph_seq.pred[v] if self._graph_seq.pred.get(v) else {0}))
+                    Converter.__write_line(file,
+                                           f'x_{v} = x_{prev_seq}.mean({self._graph_seq.nodes[v]["axes"]})',
+                                           self.tabulation * 2)
+                    cur_x_seq = v
 
                 if self.sequences[v]:
                     Converter.__write_line(file,
@@ -152,5 +178,7 @@ class Converter:
         Converter.__write_line(file, 'import torch')
         Converter.__write_line(file, 'from torch import nn\n\n')
         Converter.__write_line(file, f'class {model_name}(nn.Module):\n')
-        Converter.__write_line(file, 'def __init__(self):', self.tabulation)
+        Converter.__write_line(file,
+                               f'def __init__(self, in_shape={self.__default_input_shape}):',
+                               self.tabulation)
         Converter.__write_line(file, f'super({model_name}, self).__init__()', self.tabulation * 2)

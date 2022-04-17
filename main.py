@@ -1,22 +1,19 @@
-import torch.utils.data
-from torchvision import datasets
-from torchvision.transforms import transforms
-from wgan.NNEmbeddingDataset import NNEmbeddingDataset
+import json
 
-# dataset = datasets.MNIST(
-#     "../data/mnist",
-#     train=True,
-#     download=True,
-#     transform=transforms.Compose([transforms.ToTensor(), transforms.Normalize([0.5], [0.5])])
-# )
+import torch
+import torch.nn as nn
 
-dataset = NNEmbeddingDataset("data/nn_embedding", 500, 500)
+from embedding.graph import NeuralNetworkGraph
 
-dataloader = torch.utils.data.DataLoader(
-    dataset,
-    batch_size=2,
-    shuffle=True
-)
+# 0.emb = ALEXNET
+with open('./estimator/graph_generated_embeddings/good_embedding.txt') as f:
+    embedding = json.load(f)
 
-for i, img in enumerate(dataloader):
-    print(img.shape)
+for j in embedding:
+    a = j[:37]
+    for id, i in enumerate(a):
+        if i is not None:
+            print(id, i)
+    print('edges count: ' + str(j[37]))
+    print('####################\n')
+

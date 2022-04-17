@@ -1,6 +1,10 @@
 import hiddenlayer as hl
 import networkx as nx
 
+ATTRIBUTES_POS_COUNT = 37
+NODE_EMBEDDING_DIMENSION = 100
+NONE_REPLACEMENT = -1
+
 node_to_ops = {
     "Conv": 0,
     "LeakyRelu": 1,
@@ -52,32 +56,29 @@ attribute_to_pos = {
     # "skip_connections": [37, ...]
 }
 
-reversed_attribute_to_pos = {
-    0: ['dilations', 2],
-    2: ['group', 1],
-    3: ['kernel_shape', 2],
-    5: ['pads', 4],
-    9: ['strides', 2],
-    11: ['output_shape', 4],
-    15: ['alpha', 1],
-    16: ['axis', 1],
-    17: ['output_shape', 2],
-    19: ['beta', 1],
-    20: ['transB', 1],
-    21: ['epsilon', 1],
-    22: ['momentum', 1],
-    23: ['mode', 1],
-    24: ['pads', 8],
-    32: ['value', 1],
-    33: ['axes', 2],
-    35: ['keepdims', 1],
-    36: ['op', 1]
+reversed_attribute = {
+    0: {'op': 'dilations', 'len': 2, 'type': 'int', 'range': [0, float('inf')]},
+    2: {'op': 'group', 'len': 1, 'type': 'int', 'range': [0, float('inf')]},
+    3: {'op': 'kernel_shape', 'len': 2, 'type': 'int', 'range': [0, float('inf')]},
+    5: {'op': 'pads', 'len': 4, 'type': 'int', 'range': [0, float('inf')]},
+    9: {'op': 'strides', 'len': 2, 'type': 'int', 'range': [0, float('inf')]},
+    11: {'op': 'output_shape', 'len': 4, 'type': 'int', 'range': [0, float('inf')]},
+    15: {'op': 'alpha', 'len': 1, 'type': 'float', 'range': [0.0, float('inf')]},
+    16: {'op': 'axis', 'len': 1, 'type': 'int', 'range': [0, float('inf')]},
+    17: {'op': 'output_shape', 'len': 2, 'type': 'int', 'range': [0, float('inf')]},
+    19: {'op': 'beta', 'len': 1, 'type': 'float', 'range': [0.0, float('inf')]},
+    20: {'op': 'transB', 'len': 1, 'type': 'int', 'range': [0, float('inf')]},
+    21: {'op': 'epsilon', 'len': 1, 'type': 'float', 'range': [0.0, float('inf')]},
+    22: {'op': 'momentum', 'len': 1, 'type': 'float', 'range': [0.0, float('inf')]},
+    23: {'op': 'mode', 'len': 1, 'type': 'int', 'range': [0, len(pads_to_mods)]},
+    24: {'op': 'pads', 'len': 8, 'type': 'int', 'range': [0, float('inf')]},
+    32: {'op': 'value', 'len': 1, 'type': 'float', 'range': [0.0, float('inf')]},
+    33: {'op': 'axes', 'len': 2, 'type': 'int', 'range': [0, float('inf')]},
+    35: {'op': 'keepdims', 'len': 1, 'type': 'int', 'range': [0, float('inf')]},
+    36: {'op': 'op', 'len': 1, 'type': 'int', 'range': [0, len(node_to_ops)]},
+    37: {'len': 1, 'type': 'int', 'range': [0, NODE_EMBEDDING_DIMENSION - 37]},
+    38: {'type': 'int', 'range': [0, float('inf')]},
 }
-
-ATTRIBUTES_POS_COUNT = 37
-NODE_EMBEDDING_DIMENSION = 100
-NONE_REPLACEMENT = -1  # TODO: -1? and ceil to (int) or leave float
-
 
 # autoencoder = Autoencoder()
 # autoencoder.load_state_dict(torch.load("models/autoencoder.pth"))
@@ -101,12 +102,34 @@ class NeuralNetworkGraph(nx.DiGraph):
         """Create graph from embedding and return it. Get embedding type of list"""
         graph = cls.__new__(cls)
         super(NeuralNetworkGraph, graph).__init__()
-        graph.embedding = embedding
         # TODO:
         #  graph.embedding = embedding if is_naive else autoencoder.decode(
         #     torch.tensor(NeuralNetworkGraph.replace_none_in_embedding(embedding, is_need_replace=False))).tolist()
+        graph.embedding = embedding
+        # graph.embedding = cls.__fix_attributes(graph.embedding)
         graph.__create_graph()
         return graph
+
+    @staticmethod
+    def __fix_attributes(embedding):
+        for e in range(len(embedding)):
+            for pos, attr in reversed_attribute.items():
+                if 'len' not in attr:
+                    n = NODE_EMBEDDING_DIMENSION - pos
+                else:
+                    n = attr['len']
+                for i in range(n):
+                    if not embedding[e][pos + i]:
+                        continue
+                    if attr['type'] == 'int':
+                        embedding[e][pos + i] = int(round(embedding[e][pos + i]))
+                    if attr['type'] == 'float':
+                        embedding[e][pos + i] = float(embedding[e][pos + i])
+                    if embedding[e][pos + i] < attr['range'][0]:
+                        embedding[e][pos + i] = attr['range'][0]
+                    if attr['range'][1] <= embedding[e][pos + i]:
+                        embedding[e][pos + i] = attr['range'][1]
+        return embedding
 
     def get_naive_embedding(self):
         """Return naive embedding"""
@@ -118,7 +141,7 @@ class NeuralNetworkGraph(nx.DiGraph):
             for j in range(len(embedding[i])):
                 if is_need_replace and not embedding[i][j]:
                     embedding[i][j] = NONE_REPLACEMENT
-                if not is_need_replace and embedding[i][j] == NONE_REPLACEMENT:
+                if not is_need_replace and round(embedding[i][j]) == NONE_REPLACEMENT:
                     embedding[i][j] = None
         return embedding
 
@@ -134,11 +157,13 @@ class NeuralNetworkGraph(nx.DiGraph):
         for embedding in self.embedding:
             """Add node with attributes to graph"""
             params = {}
-            for pos in reversed_attribute_to_pos:
+            for pos in reversed_attribute:
+                if 'op' not in reversed_attribute[pos]:
+                    continue
                 is_set = True
-                if reversed_attribute_to_pos[pos][1] > 1:
+                if reversed_attribute[pos]['len'] > 1:
                     attr = []
-                    for i in range(reversed_attribute_to_pos[pos][1]):
+                    for i in range(reversed_attribute[pos]['len']):
                         if embedding[pos + i] is None:
                             is_set = False
                             break
@@ -154,7 +179,7 @@ class NeuralNetworkGraph(nx.DiGraph):
                         else:
                             attr = embedding[pos]
                 if is_set:
-                    params[reversed_attribute_to_pos[pos][0]] = attr
+                    params[reversed_attribute[pos]['op']] = attr
             self.add_node(counter, **params)
 
             """Add edge to graph"""
@@ -194,8 +219,12 @@ class NeuralNetworkGraph(nx.DiGraph):
             size 2 (for linear), size 4 (for convolutional).
             """
             if not node['output_shape'] or node['output_shape'] == []:
-                output_shape = self.__input_shapes[id]
-                self.nodes[id]['output_shape'] = output_shape
+                output_shape = self.__input_shapes.get(id)
+                if output_shape:
+                    node['output_shape'] = output_shape
+                    self.nodes[id]['output_shape'] = output_shape
+                else:
+                    del node['output_shape']
 
             """
             Set node's parameters to embedding vector in order described in attribute_to_pos dictionary 
@@ -246,19 +275,17 @@ class NeuralNetworkGraph(nx.DiGraph):
                 self.__calculate_embedding()
             else:
                 print('Graph is not supported. This network is not supported.')
-
         except KeyError as e:
             print(f'Operation or layer is not supported: {e}.')
 
-
-@staticmethod
-def check_equality(graph1, graph2):
-    """Check two graphs on equality. Return if they are equal and message"""
-    if graph1.edges != graph2.edges:
-        return False, 'Edges are not equal'
-    if sorted(list(graph1.nodes)) != sorted(list(graph2.nodes)):
-        return False, 'Nodes are not equal'
-    for node in graph1.nodes:
-        if graph1.nodes[node] != graph2.nodes[node]:
-            return False, 'Node params are not equal'
-    return True, 'Graphs are equal'
+    @staticmethod
+    def check_equality(graph1, graph2):
+        """Check two graphs on equality. Return if they are equal and message"""
+        if graph1.edges != graph2.edges:
+            return False, 'Edges are not equal'
+        if sorted(list(graph1.nodes)) != sorted(list(graph2.nodes)):
+            return False, 'Nodes are not equal'
+        for node in graph1.nodes:
+            if graph1.nodes[node] != graph2.nodes[node]:
+                return False, 'Node params are not equal'
+        return True, 'Graphs are equal'

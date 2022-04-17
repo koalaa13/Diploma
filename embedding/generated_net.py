@@ -1,17 +1,14 @@
+import torch
 from torch import nn
 
 
 class Tmp(nn.Module):
 
-    def __init__(self):
+    def __init__(self, in_shape=28 * 28):
         super(Tmp, self).__init__()
         self.seq1 = nn.Sequential(
-            nn.Linear(in_features=3, out_features=128),
-            nn.ReLU(),
             nn.Flatten(),
-            nn.Linear(in_features=128, out_features=64),
-            nn.ReLU(),
-            nn.Linear(in_features=64, out_features=10),
+            nn.Linear(in_features=784, out_features=10),
             nn.ReLU(),
         )
 
