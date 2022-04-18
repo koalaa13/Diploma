@@ -1,3 +1,4 @@
+import importlib
 import json
 import math
 import os
@@ -5,6 +6,7 @@ import sys
 
 import optuna
 import torch
+import tqdm
 from optuna import Trial
 from optuna.samplers import TPESampler
 from optuna.samplers._tpe.sampler import _get_observation_pairs, _split_observation_pairs
@@ -12,6 +14,7 @@ from torch import optim
 
 from embedding.convert import *
 from embedding.graph import *
+from estimator.tmp import tmp
 
 
 class Estimator:
@@ -26,6 +29,7 @@ class Estimator:
                             "Relu",
                             "Tanh",
                             "ConvTranspose"]
+        self.accuracy_non_zero_count = 0
         self.first_in_shape = [1, 28, 28]
         self.train_dataloader = train_dataloader
         self.test_dataloader = test_dataloader
@@ -67,6 +71,42 @@ class Estimator:
         #     self.good_center[i] /= good_cnt
         #     self.bad_center[i] /= bad_cnt
 
+    # cuz I am generating MNIST classifiers the last part of a network should be Flaten -> Linear(10)
+    # generate it manually
+    def __add_last_linear(self, in_shape, embedding, m):
+        flatten = [None] * m
+        linear = [None] * m
+
+        flatten[ATTRIBUTES_POS_COUNT - 1] = node_to_ops['Flatten']
+        flatten[ATTRIBUTES_POS_COUNT] = 1
+        flatten[ATTRIBUTES_POS_COUNT + 1] = len(embedding) + 1
+
+        if len(in_shape) == 3:
+            flatten[16] = 1
+            flatten[17] = 1  # batch_size
+            flatten[18] = in_shape[1] * in_shape[2]
+            in_shape = [1, in_shape[1] * in_shape[2]]
+        if len(in_shape) == 2:
+            flatten[16] = 1
+            flatten[17] = 1  # batch_size
+            flatten[18] = in_shape[1]
+
+        linear[ATTRIBUTES_POS_COUNT - 1] = node_to_ops['Linear']
+
+        linear[ATTRIBUTES_POS_COUNT] = 0
+
+        linear[15] = 1.0
+        out_channel = 10
+        linear[17] = 1
+        linear[18] = out_channel
+        linear[19] = 1.0
+        linear[20] = 1
+
+        in_shape = [1, out_channel]
+
+        embedding.append(flatten)
+        embedding.append(linear)
+
     def objective(self, trial: Trial):
         n = trial.suggest_int("embedding_height", 1, self.embedding_height)
         # m = trial.suggest_int("embedding_width", 1, self.embedding_width)
@@ -79,11 +119,8 @@ class Estimator:
             op = trial.suggest_categorical("op_" + str(i), self.support_ops)
             embedding[i][attribute_to_pos['op']] = node_to_ops[op]
             # generate bamboo
-            if i < n - 1:
-                embedding[i][ATTRIBUTES_POS_COUNT] = 1
-                embedding[i][ATTRIBUTES_POS_COUNT + 1] = i + 1
-            else:
-                embedding[i][ATTRIBUTES_POS_COUNT] = 0
+            embedding[i][ATTRIBUTES_POS_COUNT] = 1
+            embedding[i][ATTRIBUTES_POS_COUNT + 1] = i + 1
         in_shape = self.first_in_shape
         for i in range(n):
             # TODO op is int now, change it in ifs below
@@ -173,13 +210,15 @@ class Estimator:
                 in_shape = [in_shape[0], h_out, w_out]
             # FLATTEN
             if op == 3:
-                if len(in_shape) != 3:
-                    return -1e9
-
-                embedding[i][16] = 1
-                embedding[i][17] = 1  # batch_size
-                embedding[i][18] = in_shape[1] * in_shape[2]
-                in_shape = [1, in_shape[1] * in_shape[2]]
+                if len(in_shape) == 3:
+                    embedding[i][16] = 1
+                    embedding[i][17] = 1  # batch_size
+                    embedding[i][18] = in_shape[1] * in_shape[2]
+                    in_shape = [1, in_shape[1] * in_shape[2]]
+                if len(in_shape) == 2:
+                    embedding[i][16] = 1
+                    embedding[i][17] = 1  # batch_size
+                    embedding[i][18] = in_shape[1]
             # LINEAR
             if op == 4:
                 if len(in_shape) != 2:
@@ -301,7 +340,7 @@ class Estimator:
                 embedding[i][14] = w_out
 
                 in_shape = [out_channel, h_out, w_out]
-
+        self.__add_last_linear(in_shape, embedding, m)
         return self.__get_quality_from_embedding(embedding)
 
     # TODO this function has to create network from embedding and return some metrics of quality
@@ -314,65 +353,53 @@ class Estimator:
         except Exception:
             return -1e6
         try:
-            filepath = 'tmp/tmp.py'
+            filepath = './tmp/tmp.py'
             model_name = 'Tmp'
             folders = os.path.dirname(filepath)
             os.makedirs(folders, exist_ok=True)
             Converter(graph, filepath=filepath, model_name=model_name)
-            os.makedirs('./graph_generated_embeddings', exist_ok=True)
-            with open('./graph_generated_embeddings/good_embedding.txt', 'w+') as f:
-                f.write(json.dumps(embedding))
             print("MODEL GENERATED")
         except Exception:
             return -1e3
-        return 0
-        # if generated model throws exception while training or testing = generated embedding is very bad
-        # try:
-        #     # generate a file with Pytorch realization of embedded network
-        #     graph = NeuralNetworkGraph.get_graph(embedding)
-        #     print("Graph generated")
-        #
-        #     # os.makedirs('./graph_generated_embeddings', exist_ok=True)
-        #     # with open('./graph_generated_embeddings/good_embedding.txt', 'w+') as f:
-        #     #     f.write(json.dumps(embedding))
+        try:
+            importlib.reload(tmp)
 
-            # filepath = 'tmp/tmp.py'
-            # model_name = 'Tmp'
-            # folders = os.path.dirname(filepath)
-            # os.makedirs(folders, exist_ok=True)
-            # Converter(graph, filepath=filepath, model_name=model_name)
-            # print("Model generated")
-        #     sys.path.append(folders)
-        #
-        #     model = Tmp()
-        #
-        #     # train model
-        #     model.train()
-        #     n_epoch = 10
-        #
-        #     # mb configure optimizer here
-        #     optimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.5)
-        #     for epoch in range(n_epoch):
-        #         for data, target in self.train_dataloader:
-        #             optimizer.zero_grad()
-        #             output = model(data)
-        #             loss = self.loss(output, target)
-        #             loss.backward()
-        #             optimizer.step()
-        #
-        #     # testing and calculating accuracy
-        #     model.eval()
-        #     correct = 0
-        #     with torch.no_grad():
-        #         for data, target in self.test_dataloader:
-        #             output = model(data)
-        #         pred = output.data.max(1, keepdim=True)[1]
-        #         correct += pred.eq(target.data.view_as(pred)).sum()
-        #     # return accuracy
-        #     return 100. * correct / len(self.test_dataloader.dataset)
-        # except Exception as e:
-        #     print(str(e))
-        #     return -1e9
+            model = tmp.Tmp()
+            print('MODEL CREATED')
+            # train model
+            model.train()
+            n_epoch = 10
+
+            # mb configure optimizer here
+            print('MODEL TRAINING STARTED')
+            optimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.5)
+            for epoch in range(n_epoch):
+                for i, (data, target) in enumerate(tqdm.tqdm(self.train_dataloader)):
+                    optimizer.zero_grad()
+                    output = model(data)
+                    loss = self.loss(output, target)
+                    loss.backward()
+                    optimizer.step()
+            print('MODEL TRAINING FINISHED')
+            # testing and calculating accuracy
+            model.eval()
+            correct = 0
+            with torch.no_grad():
+                for i, (data, target) in enumerate(tqdm.tqdm(self.test_dataloader)):
+                    output = model(data)
+                    pred = output.data.max(1, keepdim=True)[1]
+                    correct += pred.eq(target.data.view_as(pred)).sum()
+            # return accuracy
+            accuracy = 100. * correct.item() / len(self.test_dataloader.dataset)
+            os.makedirs('./estimator_generated_embeddings', exist_ok=True)
+            with open('./estimator_generated_embeddings/' + str(self.accuracy_non_zero_count) + '_' + str(
+                    accuracy) + '.txt', 'w+') as f:
+                f.write(json.dumps(embedding))
+            self.accuracy_non_zero_count += 1
+            return accuracy
+        except Exception as e:
+            print(str(e))
+            return -1e2
 
     def __pre_train(self):
         sampler = TPESampler()

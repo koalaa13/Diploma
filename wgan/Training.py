@@ -73,7 +73,7 @@ if __name__ == '__main__':
         shuffle=True)
 
     estimator = Estimator(options.embedding_width, options.embedding_height, train_dataloader, test_dataloader,
-                          F.nll_loss)
+                          F.nll_loss, device)
 
     need_transform = False
     if need_transform:
