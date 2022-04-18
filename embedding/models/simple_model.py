@@ -6,12 +6,12 @@ import torch.nn.functional as F
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
-        self.linear = nn.Linear(784, 10)
+        self.linear = nn.Linear(28, 100)
         self.relu = nn.ReLU()
-        self.conv = nn.Conv2d(1, 20, (3, 3))
+        self.leaky_relu = nn.LeakyReLU()
+        self.conv = nn.Conv2d(1, 20, (2, 2))
+        self.sigmoid = nn.Sigmoid()
 
     def forward(self, x):
-        x = self.conv(x)
-        x = torch.flatten(x, 1)
-        x = torch.flatten(x, 1)
+        x = self.linear(x)
         return x

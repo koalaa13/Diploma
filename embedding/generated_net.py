@@ -4,12 +4,10 @@ from torch import nn
 
 class Tmp(nn.Module):
 
-    def __init__(self, in_shape=1):
+    def __init__(self, in_shape=28 * 28):
         super(Tmp, self).__init__()
         self.seq1 = nn.Sequential(
-            nn.Conv2d(in_channels=in_shape, out_channels=20, kernel_size=(3, 3), stride=(1, 1), padding=(0, 0), dilation=(1, 1), groups=1),
-            nn.Flatten(),
-            nn.Flatten(),
+            nn.Sigmoid(),
         )
 
     def forward(self, x_0):

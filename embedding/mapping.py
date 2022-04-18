@@ -81,6 +81,10 @@ class OperationMapping:
         return 'nn.Tanh()'
 
     @staticmethod
+    def elu_map(node=None, in_shape=None, out_shape=None):
+        return 'nn.ELU()'
+
+    @staticmethod
     def pad_map(node, in_shape=None, out_shape=None):
         # TODO: F.pad https://github.com/onnx/onnx/blob/main/docs/Operators.md#Pad
         return f"#  Unsupportable layer type: {node['op']}"
@@ -156,6 +160,7 @@ class NetworkMapping:
         "Pad": OperationMapping.pad_map,
         "ReduceMean": OperationMapping.reducemean_map,
         "Tanh": OperationMapping.tanh_map,
+        "Elu": OperationMapping.elu_map,
     }
 
     @staticmethod

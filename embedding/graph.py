@@ -1,8 +1,9 @@
 import hiddenlayer as hl
 import networkx as nx
+import torch
 
-ATTRIBUTES_POS_COUNT = 37
-NODE_EMBEDDING_DIMENSION = 100
+ATTRIBUTES_POS_COUNT = 46
+NODE_EMBEDDING_DIMENSION = 109
 NONE_REPLACEMENT = -1
 
 node_to_ops = {
@@ -22,6 +23,10 @@ node_to_ops = {
     "ReduceMean": 13,
     "Tanh": 14,
     "ConvTranspose": 15,
+    "Slice": 16,
+    "Elu": 17,
+    "Constant": 18,
+    "Reshape": 19,
 }
 
 pads_to_mods = {
@@ -31,53 +36,48 @@ pads_to_mods = {
     "circular": 3,
 }
 
-ops_with_different_dims = ["output_shape", "pads"]
-
 attribute_to_pos = {
-    "dilations": [0, 1],
-    "group": 2,
-    "kernel_shape": [3, 4],
-    "pads_4": [5, 6, 7, 8],
-    "strides": [9, 10],
-    "output_shape_4": [11, 12, 13, 14],
-    "alpha": 15,
-    "axis": 16,
-    "output_shape_2": [17, 18],
-    "beta": 19,
-    "transB": 20,
-    "epsilon": 21,
-    "momentum": 22,
-    "mode": 23,
-    "pads_8": [24, 25, 26, 27, 28, 29, 30, 31],
-    "value": 32,
-    "axes": [33, 34],
-    "keepdims": 35,
-    "op": 36,
-    # "skip_connections": [37, ...]
+    "alpha": 0,
+    "axes": [1, 2, 3, 4],
+    "axis": 5,
+    "dilations": [6, 7],
+    "ends": [8, 9, 10, 11],
+    "epsilon": 12,
+    "group": 13,
+    "keepdims": 14,
+    "kernel_shape": [15, 16],
+    "mode": 17,
+    "momentum": 18,
+    "op": 19,
+    "output_shape": [20, 21, 22, 23],
+    "pads": [24, 25, 26, 27, 28, 29, 30, 31],
+    "starts": [32, 33, 34, 35],
+    "steps": [36, 37, 38, 39],
+    "strides": [40, 41],
+    "value": [42, 43, 44, 45],
+    # "skip_connections": [46, ...]
 }
 
-reversed_attribute = {
-    0: {'op': 'dilations', 'len': 2, 'type': 'int', 'range': [0, float('inf')]},
-    2: {'op': 'group', 'len': 1, 'type': 'int', 'range': [0, float('inf')]},
-    3: {'op': 'kernel_shape', 'len': 2, 'type': 'int', 'range': [0, float('inf')]},
-    5: {'op': 'pads', 'len': 4, 'type': 'int', 'range': [0, float('inf')]},
-    9: {'op': 'strides', 'len': 2, 'type': 'int', 'range': [0, float('inf')]},
-    11: {'op': 'output_shape', 'len': 4, 'type': 'int', 'range': [0, float('inf')]},
-    15: {'op': 'alpha', 'len': 1, 'type': 'float', 'range': [0.0, float('inf')]},
-    16: {'op': 'axis', 'len': 1, 'type': 'int', 'range': [0, float('inf')]},
-    17: {'op': 'output_shape', 'len': 2, 'type': 'int', 'range': [0, float('inf')]},
-    19: {'op': 'beta', 'len': 1, 'type': 'float', 'range': [0.0, float('inf')]},
-    20: {'op': 'transB', 'len': 1, 'type': 'int', 'range': [0, float('inf')]},
-    21: {'op': 'epsilon', 'len': 1, 'type': 'float', 'range': [0.0, float('inf')]},
-    22: {'op': 'momentum', 'len': 1, 'type': 'float', 'range': [0.0, float('inf')]},
-    23: {'op': 'mode', 'len': 1, 'type': 'int', 'range': [0, len(pads_to_mods)]},
+reversed_attributes = {
+    0: {'op': 'alpha', 'len': 1, 'type': 'float', 'range': [0.0, float('inf')]},
+    1: {'op': 'axes', 'len': 4, 'type': 'int', 'range': [0, float('inf')]},
+    5: {'op': 'axis', 'len': 1, 'type': 'int', 'range': [0, float('inf')]},
+    6: {'op': 'dilations', 'len': 2, 'type': 'int', 'range': [0, float('inf')]},
+    8: {'op': 'ends', 'len': 4, 'type': 'int', 'range': [0, float('inf')]},
+    12: {'op': 'epsilon', 'len': 1, 'type': 'float', 'range': [0.0, float('inf')]},
+    13: {'op': 'group', 'len': 1, 'type': 'int', 'range': [0, float('inf')]},
+    14: {'op': 'keepdims', 'len': 1, 'type': 'int', 'range': [0, float('inf')]},
+    15: {'op': 'kernel_shape', 'len': 2, 'type': 'int', 'range': [0, float('inf')]},
+    17: {'op': 'mode', 'len': 1, 'type': 'int', 'range': [0, len(pads_to_mods)]},
+    18: {'op': 'momentum', 'len': 1, 'type': 'float', 'range': [0.0, float('inf')]},
+    19: {'op': 'op', 'len': 1, 'type': 'int', 'range': [0, len(node_to_ops)]},
+    20: {'op': 'output_shape', 'len': 4, 'type': 'int', 'range': [0, float('inf')]},
     24: {'op': 'pads', 'len': 8, 'type': 'int', 'range': [0, float('inf')]},
-    32: {'op': 'value', 'len': 1, 'type': 'float', 'range': [0.0, float('inf')]},
-    33: {'op': 'axes', 'len': 2, 'type': 'int', 'range': [0, float('inf')]},
-    35: {'op': 'keepdims', 'len': 1, 'type': 'int', 'range': [0, float('inf')]},
-    36: {'op': 'op', 'len': 1, 'type': 'int', 'range': [0, len(node_to_ops)]},
-    37: {'len': 1, 'type': 'int', 'range': [0, NODE_EMBEDDING_DIMENSION - 37]},
-    38: {'type': 'int', 'range': [0, float('inf')]},
+    32: {'op': 'starts', 'len': 4, 'type': 'int', 'range': [0, float('inf')]},
+    36: {'op': 'starts', 'len': 4, 'type': 'int', 'range': [0, float('inf')]},
+    40: {'op': 'strides', 'len': 2, 'type': 'int', 'range': [0, float('inf')]},
+    42: {'len': 1, 'type': 'int', 'range': [0, NODE_EMBEDDING_DIMENSION - ATTRIBUTES_POS_COUNT]},
+    43: {'type': 'int', 'range': [0, float('inf')]},
 }
 
 # autoencoder = Autoencoder()
@@ -113,7 +113,7 @@ class NeuralNetworkGraph(nx.DiGraph):
     @staticmethod
     def __fix_attributes(embedding):
         for e in range(len(embedding)):
-            for pos, attr in reversed_attribute.items():
+            for pos, attr in reversed_attributes.items():
                 if 'len' not in attr:
                     n = NODE_EMBEDDING_DIMENSION - pos
                 else:
@@ -133,7 +133,7 @@ class NeuralNetworkGraph(nx.DiGraph):
 
     def get_naive_embedding(self):
         """Return naive embedding"""
-        return self.embedding
+        return self.__fix_attributes(self.embedding)
 
     @staticmethod
     def replace_none_in_embedding(embedding, is_need_replace=True):
@@ -148,6 +148,7 @@ class NeuralNetworkGraph(nx.DiGraph):
     def get_embedding(self):
         """Return embedding"""
         # TODO:
+        #  __fix_attributes
         #  return autoencoder.encode(
         #     torch.tensor(NeuralNetworkGraph.replace_none_in_embedding(self.embedding.copy()))).tolist()
 
@@ -157,29 +158,31 @@ class NeuralNetworkGraph(nx.DiGraph):
         for embedding in self.embedding:
             """Add node with attributes to graph"""
             params = {}
-            for pos in reversed_attribute:
-                if 'op' not in reversed_attribute[pos]:
+            for pos, attr_info in reversed_attributes.items():
+                if 'op' not in attr_info:
                     continue
                 is_set = True
-                if reversed_attribute[pos]['len'] > 1:
+                if attr_info['len'] > 1:
                     attr = []
-                    for i in range(reversed_attribute[pos]['len']):
-                        if embedding[pos + i] is None:
-                            is_set = False
+                    for i in range(attr_info['len']):
+                        if embedding[pos + i] is not None:
+                            attr.append(embedding[pos + i])
+                        else:
                             break
-                        attr.append(embedding[pos + i])
+                    if len(attr) == 0:
+                        is_set = False
                 else:
                     if embedding[pos] is None:
                         is_set = False
                     else:
-                        if pos == 36:  # Attribute 'op'
+                        if pos == attribute_to_pos['op']:
                             attr = str(list(filter(lambda x: node_to_ops[x] == embedding[pos], node_to_ops))[0])
-                        elif pos == 23:  # Attribute 'mode'
+                        elif pos == attribute_to_pos['mode']:
                             attr = str(list(filter(lambda x: pads_to_mods[x] == embedding[pos], pads_to_mods))[0])
                         else:
                             attr = embedding[pos]
                 if is_set:
-                    params[reversed_attribute[pos]['op']] = attr
+                    params[attr_info['op']] = attr
             self.add_node(counter, **params)
 
             """Add edge to graph"""
@@ -190,9 +193,11 @@ class NeuralNetworkGraph(nx.DiGraph):
     def __add_edges(self, graph):
         """Add edges with changed node's names"""
         for edge in graph.edges:
-            v = self.__id_to_node[edge[0]]
-            u = self.__id_to_node[edge[1]]
+            v = self.__id_to_node.get(edge[0])
+            u = self.__id_to_node.get(edge[1])
             self.__input_shapes[u] = edge[2]
+            if v == u:
+                continue
             self.add_edge(v, u)
 
     def __is_supported(self, v):
@@ -233,8 +238,6 @@ class NeuralNetworkGraph(nx.DiGraph):
             for param in node:
                 op_name = param
                 if isinstance(node[param], list):
-                    if param in ops_with_different_dims:
-                        op_name += '_' + str(len(node[param]))
                     current_poses = attribute_to_pos[op_name]
                     for i in range(len(node[param])):
                         embedding[current_poses[i]] = node[param][i]
@@ -244,10 +247,11 @@ class NeuralNetworkGraph(nx.DiGraph):
                         value = node_to_ops[value]
                     if param == 'mode' and node['op'] == 'Pad':
                         value = pads_to_mods[value]
-                    embedding[attribute_to_pos[op_name]] = value
+                    if op_name in attribute_to_pos:
+                        embedding[attribute_to_pos[op_name]] = value
 
             edge_list = list(self.adj[id])
-            if len(edge_list) + ATTRIBUTES_POS_COUNT + 1 <= 1000:
+            if len(edge_list) + ATTRIBUTES_POS_COUNT + 1 <= NODE_EMBEDDING_DIMENSION:
                 embedding[ATTRIBUTES_POS_COUNT] = len(edge_list)
                 for i in range(0, len(edge_list)):
                     embedding[ATTRIBUTES_POS_COUNT + i + 1] = edge_list[i]
@@ -261,12 +265,27 @@ class NeuralNetworkGraph(nx.DiGraph):
             counter = 0
 
             """Renumber nodes and add it to graph"""
+            values = {}
             for id in graph.nodes:
-                self.__id_to_node[id] = counter
                 graph.nodes[id].params['output_shape'] = graph.nodes[id].output_shape
                 graph.nodes[id].params['op'] = graph.nodes[id].op
-                self.add_node(counter, **graph.nodes[id].params)
+                if graph.nodes[id].params['op'] == 'Constant':
+                    to = list(filter(lambda x: x[0] == id, graph.edges))[0][1]
+                    if torch.is_tensor(graph.nodes[id].params['value']):
+                        values[to] = {'value': graph.nodes[id].params['value'].tolist(), 'from': id}
+                    else:
+                        values[to] = {'value': graph.nodes[id].params['value'], 'from': id}
+                    continue
+                self.__id_to_node[id] = counter
                 counter += 1
+
+            for id in graph.nodes:
+                if graph.nodes[id].params['op'] == 'Constant':
+                    continue
+                if id in values:
+                    graph.nodes[id].params['value'] = values[id]['value']
+                    self.__id_to_node[values[id]['from']] = self.__id_to_node[id]
+                self.add_node(self.__id_to_node[id], **graph.nodes[id].params)
 
             self.__add_edges(graph)
             is_supported = self.__is_supported(0)
@@ -277,6 +296,7 @@ class NeuralNetworkGraph(nx.DiGraph):
                 print('Graph is not supported. This network is not supported.')
         except KeyError as e:
             print(f'Operation or layer is not supported: {e}.')
+            raise KeyError(f'Operation or layer is not supported: {e}.')
 
     @staticmethod
     def check_equality(graph1, graph2):

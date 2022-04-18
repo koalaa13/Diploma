@@ -1,3 +1,5 @@
+import sys
+
 import networkx as nx
 from torch import nn
 
@@ -63,13 +65,18 @@ class Converter:
                 layer = NetworkMapping.map_node(node, old_dim, self.out_dim[v])
             if len(edges) > 1 \
                     or len(self.graph.pred[v]) > 1 \
-                    or (node['op'] in ['Concat', 'Pad', 'ReduceMean'] and len(self.graph.pred[v]) <= 1):
+                    or (
+                    node['op'] in ['Concat', 'Pad', 'ReduceMean', 'Slice', 'Reshape'] and len(self.graph.pred[v]) <= 1):
                 current_sequence = len(self.sequences) + 1
                 if current_sequence not in self._graph_seq.nodes:
                     if node['op'] == 'Pad':
                         self._graph_seq.add_node(current_sequence, **{'op': node['op'], 'pads': node['pads']})
                     elif node['op'] == 'ReduceMean':
                         self._graph_seq.add_node(current_sequence, **{'op': node['op'], 'axes': node['axes']})
+                    elif node['op'] == 'Slice':
+                        self._graph_seq.add_node(current_sequence, **{'op': node['op'], 'node': node})
+                    elif node['op'] == 'Reshape':
+                        self._graph_seq.add_node(current_sequence, **{'op': node['op'], 'value': node['value']})
                     else:
                         self._graph_seq.add_node(current_sequence, **{'op': node['op']})
             array = self.sequences.get(current_sequence, [])
@@ -163,6 +170,27 @@ class Converter:
                     prev_seq = next(iter(self._graph_seq.pred[v] if self._graph_seq.pred.get(v) else {0}))
                     Converter.__write_line(file,
                                            f'x_{v} = x_{prev_seq}.mean({self._graph_seq.nodes[v]["axes"]})',
+                                           self.tabulation * 2)
+                    cur_x_seq = v
+                elif self._graph_seq.nodes[v]['op'] == 'Slice':
+                    prev_seq = next(iter(self._graph_seq.pred[v] if self._graph_seq.pred.get(v) else {0}))
+                    cur_node = self._graph_seq.nodes[v]["node"]
+                    tensor_slice = [':', ':', ':', ':'][:len(cur_node["output_shape"])]
+                    for i in range(len(cur_node["axes"])):
+                        start = str(cur_node["starts"][i]) if cur_node["starts"][i] != sys.maxsize else ''
+                        end = str(cur_node["ends"][i]) if cur_node["ends"][i] != sys.maxsize else ''
+                        tensor_slice[cur_node["axes"][i]] = start + ':' + end
+                        if len(cur_node.get("steps", [])) > 0:
+                            step = str(cur_node["steps"][i]) if cur_node["steps"][i] != sys.maxsize else ''
+                            tensor_slice[cur_node["axes"][i]] += ':' + step
+                    Converter.__write_line(file,
+                                           f'x_{v} = x_{prev_seq}[{", ".join(tensor_slice)}]',
+                                           self.tabulation * 2)
+                    cur_x_seq = v
+                elif self._graph_seq.nodes[v]['op'] == 'Reshape':
+                    prev_seq = next(iter(self._graph_seq.pred[v] if self._graph_seq.pred.get(v) else {0}))
+                    Converter.__write_line(file,
+                                           f'x_{v} = x_{prev_seq}.view({", ".join(list(map(str, self._graph_seq.nodes[v]["value"])))})',
                                            self.tabulation * 2)
                     cur_x_seq = v
 

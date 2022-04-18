@@ -13,7 +13,7 @@ train_dataloader = torch.utils.data.DataLoader(
                                    torchvision.transforms.Normalize(
                                        (0.1307,), (0.3081,))
                                ])),
-    batch_size=10,
+    batch_size=64,
     shuffle=True)
 
 test_dataloader = torch.utils.data.DataLoader(
@@ -25,9 +25,13 @@ test_dataloader = torch.utils.data.DataLoader(
                                    torchvision.transforms.Normalize(
                                        (0.1307,), (0.3081,))
                                ])),
-    batch_size=10,
+    batch_size=1000,
     shuffle=True)
 
-estimator = Estimator(100, 10, train_dataloader, test_dataloader, F.nll_loss)
+
+
+# cuda = torch.cuda.is_available()
+# device = torch.device('cuda:0') if cuda else torch.device('cpu')
+# estimator = Estimator(109, 10, train_dataloader, test_dataloader, device)
 # print(estimator.good_center)
 # print(estimator.bad_center)
