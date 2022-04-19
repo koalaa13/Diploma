@@ -1,6 +1,8 @@
 import argparse
 import os
+import sys
 
+import numpy
 import torchvision
 from torch.nn import BCELoss
 from torchvision import datasets
@@ -11,6 +13,7 @@ from torch.utils.data import DataLoader
 from time import process_time
 import torch.nn.functional as F
 
+from embedding.graph import NODE_EMBEDDING_DIMENSION
 from estimator.Estimator import Estimator
 from utils.DatasetTransformer import Transformer
 from wgan.Discriminator import Discriminator
@@ -24,11 +27,11 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--latent_dim", type=int, default=100, help="dimensionality of the latent space")
-    parser.add_argument("--embedding_width", type=int, default=500, help="width of an embedding")
-    parser.add_argument("--embedding_height", type=int, default=500, help="height of an embedding")
+    parser.add_argument("--embedding_width", type=int, default=NODE_EMBEDDING_DIMENSION, help="width of an embedding")
+    parser.add_argument("--embedding_height", type=int, default=14, help="height of an embedding")
     parser.add_argument("--lr", type=float, default=0.00005, help="learning rate")
-    parser.add_argument("--batch_size", type=int, default=2, help="size of a batch to train")
-    parser.add_argument("--n_epochs", type=int, default=100, help="epochs count")
+    parser.add_argument("--batch_size", type=int, default=10, help="size of a batch to train")
+    parser.add_argument("--n_epochs", type=int, default=1000, help="epochs count")
     parser.add_argument("--clip_value", type=float, default=0.01, help="lower and upper bound for disc weights")
     parser.add_argument("--n_critic", type=int, default=4, help="train generator every n_critic iterations")
     parser.add_argument("--sample_interval", type=int, default=400, help="interval between image samples")
@@ -40,7 +43,7 @@ if __name__ == '__main__':
     print(options)
 
     output_generator_dim = options.embedding_width * options.embedding_height
-    obj_shape = (options.embedding_width, options.embedding_height)
+    obj_shape = (options.embedding_height, options.embedding_width)
 
     generator_dims = [options.latent_dim, 128, 256, 512, 1024, output_generator_dim]
     discriminator_dims = [output_generator_dim, 512, 256]
@@ -72,25 +75,28 @@ if __name__ == '__main__':
         batch_size=options.batch_size_test,
         shuffle=True)
 
-    estimator = Estimator(options.embedding_width, options.embedding_height, train_dataloader, test_dataloader,
-                          F.nll_loss, device)
-
-    need_transform = False
-    if need_transform:
-        print("STARTED DATASET TRANSFORM")
-        Transformer(options.embedding_width, options.embedding_height).transform()
-        print("FINISHED DATASET TRANSFORM")
+    print("DATASET TRANSFORMATION STARTED")
+    transformer = Transformer(options.embedding_width, options.embedding_height)
+    transformer.transform_dataset('../data/nn_embedding',
+                                  '../data/nn_embedding_transformed')
+    print("DATASET TRANSFORMATION FINISHED")
 
     dataloader = torch.utils.data.DataLoader(
-        NNEmbeddingDataset("../data/nn_embedding"),
+        NNEmbeddingDataset("../data/nn_embedding_transformed"),
         batch_size=options.batch_size,
         shuffle=True,
         # num_workers=8,
         # pin_memory=True
     )
 
+    estimator = Estimator(options.embedding_width, options.embedding_height, train_dataloader, test_dataloader, device)
+    print(estimator.good_center)
+    print(estimator.bad_center)
+
     optimizer_G = torch.optim.RMSprop(generator.parameters(), lr=options.lr)
     optimizer_D = torch.optim.RMSprop(discriminator.parameters(), lr=options.lr)
+
+    estimator_loss = BCELoss()
 
     batches_cnt = 0
     for epoch in range(options.n_epochs):
@@ -127,10 +133,10 @@ if __name__ == '__main__':
                 gen_objs_cnt = gen_objs.size(0)
                 # TODO there is some questions about normalization and de-normalization of dataset
                 for k in range(gen_objs_cnt):
-                    estimator_feedbacks.append(int(estimator.check(gen_objs[k])))
+                    estimator_feedbacks.append(float(int(estimator.check(gen_objs[k]))))
                 # mb minus feedback from TPE_Estimator
-                loss_G = -torch.mean(discriminator(gen_objs)) + BCELoss(torch.tensor(estimator_feedbacks),
-                                                                        torch.ones(gen_objs_cnt))
+                loss_G = -torch.mean(discriminator(gen_objs)) + estimator_loss(torch.tensor(estimator_feedbacks),
+                                                                               torch.ones(gen_objs_cnt))
 
                 loss_G.backward()
                 optimizer_G.step()
@@ -146,12 +152,13 @@ if __name__ == '__main__':
             #     save_image(fake_objs.data[:25], "images/%d.png" % batches_cnt, nrow=5, normalize=True)
             batches_cnt += 1
 
-    need_example = False
+    need_example = True
     if need_example:
         generator.eval()
-        torch.set_printoptions(profile="full")
+        numpy.set_printoptions(threshold=sys.maxsize)
         os.makedirs("examples", exist_ok=True)
         z = torch.randn(1, options.latent_dim).to(device)
-        fake = generator(z, obj_shape).detach()
+        fake = generator(z, obj_shape).detach().cpu().numpy()
+        transformer.de_transform_embedding(fake[0])
         with open("examples/generated_example", "w+") as f:
             print(fake, file=f)

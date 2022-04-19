@@ -1,6 +1,7 @@
 import torch
 import torchvision
 
+from embedding.graph import NODE_EMBEDDING_DIMENSION
 from estimator.Estimator import Estimator
 import torch.nn.functional as F
 
@@ -28,10 +29,8 @@ test_dataloader = torch.utils.data.DataLoader(
     batch_size=1000,
     shuffle=True)
 
-
-
-# cuda = torch.cuda.is_available()
-# device = torch.device('cuda:0') if cuda else torch.device('cpu')
-# estimator = Estimator(109, 10, train_dataloader, test_dataloader, device)
+cuda = torch.cuda.is_available()
+device = torch.device('cuda:0') if cuda else torch.device('cpu')
+estimator = Estimator(NODE_EMBEDDING_DIMENSION, 10, train_dataloader, test_dataloader, device)
 # print(estimator.good_center)
 # print(estimator.bad_center)

@@ -8,7 +8,6 @@ from embedding.mapping import NetworkMapping
 
 class Converter:
     """Convert input graph to neural network."""
-
     def __init__(self, graph, filepath='models/my_model.py', model_name="Model"):
         self.graph = graph
         self.operations = nn.ModuleList()
@@ -16,18 +15,18 @@ class Converter:
         self.node_to_layer = {}
         self.node_to_operation = {}
         self.tabulation = '    '
-        first_dim_node = 0 if 'output_shape' in self.graph.nodes[0] else next(iter(self.graph.adj[0]))
-        self.out_dim = {0: self.graph.nodes[first_dim_node]['output_shape'][1]}
+        self.first_dim_node = 0 if 'output_shape' in self.graph.nodes[0] else next(iter(self.graph.adj[0]))
+        self.out_dim = {self.first_dim_node: self.graph.nodes[self.first_dim_node]['output_shape'][1]}
         self.sequences = {}
         self.is_flatten_needed = True
         self.__default_input_shape = None
         self.__init_first_sequence()
         self._graph_seq = nx.DiGraph()
-        self._graph_seq.add_node(1, **{'op': self.graph.nodes[0]['op']})
-        self.node_to_sequence = {0: 1}
+        self._graph_seq.add_node(1, **{'op': self.graph.nodes[self.first_dim_node]['op'], 'node': self.graph.nodes[self.first_dim_node]})
+        self.node_to_sequence = {self.first_dim_node: 1}
         self._top_sorted_nodes = []
         self._top_sort_visited = set()
-        self.__create_layers(0)
+        self.__create_layers(self.first_dim_node)
 
         with open(filepath, 'w') as file:
             self.__write_model_init(file, model_name)
@@ -35,16 +34,14 @@ class Converter:
             self.__write_forward(file)
 
     def __init_first_sequence(self):
-        # TODO default input_shape hard coded here
-        if self.graph.nodes[0]['op'] == 'Conv' or self.graph.nodes[0]['op'] == 'BatchNorm' \
-                or self.graph.nodes[0]['op'] == 'MaxPool' or self.graph.nodes[0]['op'] == 'ConvTranspose':
-            self.__default_input_shape = '1'
-            self.sequences = {1: [NetworkMapping.map_node(self.graph.nodes[0], 'in_shape', self.out_dim[0])]}
+        if self.graph.nodes[self.first_dim_node]['op'] == 'Conv':
+            self.__default_input_shape = '3'
+            self.sequences = {1: [NetworkMapping.map_node(self.graph.nodes[self.first_dim_node], 'in_shape', self.out_dim[self.first_dim_node])]}
         else:
-            self.__default_input_shape = '28 * 28'
+            self.__default_input_shape = '224 * 224'
             self.is_flatten_needed = False
             self.sequences = {
-                1: [NetworkMapping.map_node(self.graph.nodes[0], 'in_shape', self.out_dim[0])]
+                1: [NetworkMapping.map_node(self.graph.nodes[self.first_dim_node], 'in_shape', self.out_dim[self.first_dim_node])]
             }
 
     def __create_layers(self, cur_node):
@@ -58,25 +55,18 @@ class Converter:
             # Skip concat and add
             layer = None
             old_dim = self.out_dim[cur_node]
-            self.out_dim[v] = node['output_shape'][1] if node['output_shape'] else old_dim
-            if node['op'] not in ['Concat', 'Add']:
+            self.out_dim[v] = node['output_shape'][1] if node.get('output_shape') else old_dim
+            if node['op'] not in ['Concat', 'Add', 'Mul']:
                 if self.graph.nodes[cur_node]['op'] != 'Pad' and node['op'] == 'AveragePool':
                     node['op'] = 'AdaptiveAveragePool'
                 layer = NetworkMapping.map_node(node, old_dim, self.out_dim[v])
             if len(edges) > 1 \
                     or len(self.graph.pred[v]) > 1 \
-                    or (
-                    node['op'] in ['Concat', 'Pad', 'ReduceMean', 'Slice', 'Reshape'] and len(self.graph.pred[v]) <= 1):
+                    or (node['op'] in ['Concat', 'Pad', 'ReduceMean', 'Slice', 'Reshape', 'Transpose'] and len(self.graph.pred[v]) <= 1):
                 current_sequence = len(self.sequences) + 1
                 if current_sequence not in self._graph_seq.nodes:
-                    if node['op'] == 'Pad':
-                        self._graph_seq.add_node(current_sequence, **{'op': node['op'], 'pads': node['pads']})
-                    elif node['op'] == 'ReduceMean':
-                        self._graph_seq.add_node(current_sequence, **{'op': node['op'], 'axes': node['axes']})
-                    elif node['op'] == 'Slice':
+                    if node['op'] in ['Pad', 'ReduceMean', 'Slice', 'Reshape', 'Transpose']:
                         self._graph_seq.add_node(current_sequence, **{'op': node['op'], 'node': node})
-                    elif node['op'] == 'Reshape':
-                        self._graph_seq.add_node(current_sequence, **{'op': node['op'], 'value': node['value']})
                     else:
                         self._graph_seq.add_node(current_sequence, **{'op': node['op']})
             array = self.sequences.get(current_sequence, [])
@@ -137,11 +127,21 @@ class Converter:
                         Converter.__write_line(file,
                                                f'x_{v} = self.seq{v}(x_{v})',
                                                self.tabulation * 2)
-                if self._graph_seq.nodes[v]['op'] == 'Add':
+                elif self._graph_seq.nodes[v]['op'] == 'Add':
                     inputs = []
                     for u in self._graph_seq.pred[v]:
                         inputs.append(f'x_{u}')
                     Converter.__write_line(file, f'x_{v} = {" + ".join(map(str, inputs))}',
+                                           self.tabulation * 2)
+                    if len(self.sequences[v]) > 0:
+                        Converter.__write_line(file,
+                                               f'x_{v} = self.seq{v}(x_{v})',
+                                               self.tabulation * 2)
+                elif self._graph_seq.nodes[v]['op'] == 'Mul':
+                    inputs = []
+                    for u in self._graph_seq.pred[v]:
+                        inputs.append(f'x_{u}')
+                    Converter.__write_line(file, f'x_{v} = torch.mul({", ".join(map(str, inputs))})',
                                            self.tabulation * 2)
                     if len(self.sequences[v]) > 0:
                         Converter.__write_line(file,
@@ -155,7 +155,7 @@ class Converter:
                                            self.tabulation * 2)
                     cur_x_seq = v
                 elif self._graph_seq.nodes[v]['op'] == 'Pad':
-                    cur_pads = self._graph_seq.nodes[v]["pads"]
+                    cur_pads = self._graph_seq.nodes[v]['node']['pads']
                     new_pads = []
                     for i in range(len(cur_pads) // 2):
                         new_pads.append(cur_pads[len(cur_pads) - i - 1 - len(cur_pads) // 2])
@@ -169,7 +169,7 @@ class Converter:
                 elif self._graph_seq.nodes[v]['op'] == 'ReduceMean':
                     prev_seq = next(iter(self._graph_seq.pred[v] if self._graph_seq.pred.get(v) else {0}))
                     Converter.__write_line(file,
-                                           f'x_{v} = x_{prev_seq}.mean({self._graph_seq.nodes[v]["axes"]})',
+                                           f'x_{v} = x_{prev_seq}.mean({self._graph_seq.nodes[v]["node"]["axes"]}, keepdim={str(self._graph_seq.nodes[v]["node"]["keepdims"] == 1)})',
                                            self.tabulation * 2)
                     cur_x_seq = v
                 elif self._graph_seq.nodes[v]['op'] == 'Slice':
@@ -190,7 +190,13 @@ class Converter:
                 elif self._graph_seq.nodes[v]['op'] == 'Reshape':
                     prev_seq = next(iter(self._graph_seq.pred[v] if self._graph_seq.pred.get(v) else {0}))
                     Converter.__write_line(file,
-                                           f'x_{v} = x_{prev_seq}.view({", ".join(list(map(str, self._graph_seq.nodes[v]["value"])))})',
+                                           f'x_{v} = x_{prev_seq}.view({", ".join(list(map(str, self._graph_seq.nodes[v]["node"]["output_shape"])))})',
+                                           self.tabulation * 2)
+                    cur_x_seq = v
+                elif self._graph_seq.nodes[v]['op'] == 'Transpose':
+                    prev_seq = next(iter(self._graph_seq.pred[v] if self._graph_seq.pred.get(v) else {0}))
+                    Converter.__write_line(file,
+                                           f'x_{v} = x_{prev_seq}.permute({self._graph_seq.nodes[v]["node"]["perm"]})',
                                            self.tabulation * 2)
                     cur_x_seq = v
 

@@ -85,6 +85,10 @@ class OperationMapping:
         return 'nn.ELU()'
 
     @staticmethod
+    def log_softmax_map(node, in_shape=None, out_shape=None):
+        return f"nn.LogSoftmax()"
+
+    @staticmethod
     def pad_map(node, in_shape=None, out_shape=None):
         # TODO: F.pad https://github.com/onnx/onnx/blob/main/docs/Operators.md#Pad
         return f"#  Unsupportable layer type: {node['op']}"
@@ -161,6 +165,7 @@ class NetworkMapping:
         "ReduceMean": OperationMapping.reducemean_map,
         "Tanh": OperationMapping.tanh_map,
         "Elu": OperationMapping.elu_map,
+        "LogSoftmax": OperationMapping.log_softmax_map,
     }
 
     @staticmethod

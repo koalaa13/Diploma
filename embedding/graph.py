@@ -2,8 +2,8 @@ import hiddenlayer as hl
 import networkx as nx
 import torch
 
-ATTRIBUTES_POS_COUNT = 46
-NODE_EMBEDDING_DIMENSION = 109
+ATTRIBUTES_POS_COUNT = 50
+NODE_EMBEDDING_DIMENSION = 113
 NONE_REPLACEMENT = -1
 
 node_to_ops = {
@@ -27,6 +27,9 @@ node_to_ops = {
     "Elu": 17,
     "Constant": 18,
     "Reshape": 19,
+    "Mul": 20,
+    "Transpose": 21,
+    "LogSoftmax": 22,
 }
 
 pads_to_mods = {
@@ -55,7 +58,8 @@ attribute_to_pos = {
     "steps": [36, 37, 38, 39],
     "strides": [40, 41],
     "value": [42, 43, 44, 45],
-    # "skip_connections": [46, ...]
+    "perm": [46, 47, 48, 49]
+    # "skip_connections": [50, ...]
 }
 
 reversed_attributes = {
@@ -74,10 +78,12 @@ reversed_attributes = {
     20: {'op': 'output_shape', 'len': 4, 'type': 'int', 'range': [0, float('inf')]},
     24: {'op': 'pads', 'len': 8, 'type': 'int', 'range': [0, float('inf')]},
     32: {'op': 'starts', 'len': 4, 'type': 'int', 'range': [0, float('inf')]},
-    36: {'op': 'starts', 'len': 4, 'type': 'int', 'range': [0, float('inf')]},
+    36: {'op': 'steps', 'len': 4, 'type': 'int', 'range': [0, float('inf')]},
     40: {'op': 'strides', 'len': 2, 'type': 'int', 'range': [0, float('inf')]},
-    42: {'len': 1, 'type': 'int', 'range': [0, NODE_EMBEDDING_DIMENSION - ATTRIBUTES_POS_COUNT]},
-    43: {'type': 'int', 'range': [0, float('inf')]},
+    42: {'op': 'value', 'len': 4, 'type': 'int', 'range': [0, float('inf')]},
+    46: {'op': 'perm', 'len': 4, 'type': 'int', 'range': [0, float('inf')]},
+    50: {'len': 1, 'type': 'int', 'range': [0, NODE_EMBEDDING_DIMENSION - ATTRIBUTES_POS_COUNT]},
+    51: {'type': 'int', 'range': [0, float('inf')]},
 }
 
 # autoencoder = Autoencoder()
@@ -106,7 +112,7 @@ class NeuralNetworkGraph(nx.DiGraph):
         #  graph.embedding = embedding if is_naive else autoencoder.decode(
         #     torch.tensor(NeuralNetworkGraph.replace_none_in_embedding(embedding, is_need_replace=False))).tolist()
         graph.embedding = embedding
-        # graph.embedding = cls.__fix_attributes(graph.embedding)
+        graph.embedding = cls.__fix_attributes(graph.embedding)
         graph.__create_graph()
         return graph
 
@@ -202,7 +208,6 @@ class NeuralNetworkGraph(nx.DiGraph):
 
     def __is_supported(self, v):
         """Check if graph is supported"""
-        # TODO: change
         self.__colors[v] = 1
         result = True
         for u in self.adj[v]:
@@ -248,7 +253,8 @@ class NeuralNetworkGraph(nx.DiGraph):
                     if param == 'mode' and node['op'] == 'Pad':
                         value = pads_to_mods[value]
                     if op_name in attribute_to_pos:
-                        embedding[attribute_to_pos[op_name]] = value
+                        cur_pos = attribute_to_pos[op_name][0] if isinstance(attribute_to_pos[op_name], list) else attribute_to_pos[op_name]
+                        embedding[cur_pos] = value
 
             edge_list = list(self.adj[id])
             if len(edge_list) + ATTRIBUTES_POS_COUNT + 1 <= NODE_EMBEDDING_DIMENSION:

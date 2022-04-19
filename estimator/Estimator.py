@@ -17,6 +17,7 @@ from torch import optim
 from embedding.convert import *
 from embedding.graph import *
 from estimator.tmp import tmp
+from utils.DatasetTransformer import Transformer
 
 
 class Estimator:
@@ -48,58 +49,48 @@ class Estimator:
             "Relu",
             "Tanh",
         ]
+        self.embeddings = []
         self.device = device
         self.accuracy_non_zero_count = 0
         self.error_happened_count = 0
         self.first_in_shape = [1, 28, 28]
         self.train_dataloader = train_dataloader
         self.test_dataloader = test_dataloader
-        self.good_center = [0.0] * embedding_width
-        self.bad_center = [0.0] * embedding_width
+        self.good_center = [[0.0 for _ in range(embedding_width)] for _ in range(embedding_height)]
+        self.bad_center = [[0.0 for _ in range(embedding_width)] for _ in range(embedding_height)]
 
         self.embedding_width = embedding_width
         self.embedding_height = embedding_height
         self.study = self.__pre_train()
 
-        # TODO CHANGE EVERYTHING BELOW TOO
-        # values, scores = _get_observation_pairs(self.study, [self.__get_param_name(0, 0)], False, False)
-        # indices_below, indices_above = _split_observation_pairs(scores, self.study.sampler._gamma(len(scores)))
-        # trials = self.study.get_trials()
-        # self.points = []
-        # # True = good, False = bad
-        # for ind in indices_below:
-        #     cur_point = []
-        #     for i in range(self.embedding_height):
-        #         cur_line = []
-        #         for j in range(self.embedding_width):
-        #             cur_line.append(float(trials[ind].params[self.__get_param_name(i, j)]))
-        #             self.good_center[j] += cur_line[j]
-        #         cur_point.append(cur_line)
-        #     self.points.append((cur_point, True))
-        # for ind in indices_above:
-        #     cur_point = []
-        #     for i in range(self.embedding_height):
-        #         cur_line = []
-        #         for j in range(self.embedding_width):
-        #             cur_line.append(float(trials[ind].params[self.__get_param_name(i, j)]))
-        #             self.bad_center[j] += cur_line[j]
-        #         cur_point.append(cur_line)
-        #     self.points.append((cur_point, False))
-        # good_cnt = len(indices_below)
-        # bad_cnt = len(indices_above)
-        # for i in range(self.embedding_width):
-        #     self.good_center[i] /= good_cnt
-        #     self.bad_center[i] /= bad_cnt
+        values, scores = _get_observation_pairs(self.study, ['big_dims_ops_count'], False, False)
+        indices_below, indices_above = _split_observation_pairs(scores, self.study.sampler._gamma(len(scores)))
+        self.good_indices = indices_below
+        self.bad_indices = indices_above
+        self.transformer = Transformer(embedding_width, embedding_height)
+        self.transformer.transform_embeddings(self.embeddings)
+        for ind in self.good_indices:
+            for i in range(embedding_height):
+                for j in range(embedding_width):
+                    self.good_center[i][j] += self.embeddings[ind][i][j]
+        for ind in self.bad_indices:
+            for i in range(embedding_height):
+                for j in range(embedding_width):
+                    self.bad_center[i][j] += self.embeddings[ind][i][j]
+        for i in range(embedding_height):
+            for j in range(embedding_width):
+                self.good_center[i][j] /= len(self.good_indices)
+                self.bad_center[i][j] /= len(self.bad_indices)
 
-    # cuz I am generating MNIST classifiers the last part of a network should be like Flatten -> Linear(10)
-    # generate it manually
-    def __add_last_linear(self, in_shape, embedding, m):
+    # cuz I am generating MNIST classifiers the last part of a network should be like
+    # Flatten -> Linear(10) -> LogSoftMax
+    # So, generate it manually
+    def __add_last_layer(self, in_shape, embedding, m):
         flatten = [None] * m
         linear = [None] * m
+        log_softmax = [None] * m
 
         flatten[attribute_to_pos['op']] = node_to_ops['Flatten']
-        flatten[ATTRIBUTES_POS_COUNT] = 1
-        flatten[ATTRIBUTES_POS_COUNT + 1] = len(embedding) + 1
 
         if len(in_shape) == 3:
             flatten[5] = 1
@@ -113,8 +104,6 @@ class Estimator:
 
         linear[attribute_to_pos['op']] = node_to_ops['Linear']
 
-        linear[ATTRIBUTES_POS_COUNT] = 0
-
         linear[0] = 1.0
         out_channel = 10
         linear[20] = 1
@@ -122,8 +111,15 @@ class Estimator:
 
         in_shape = [1, out_channel]
 
+        log_softmax[attribute_to_pos['op']] = node_to_ops['LogSoftmax']
+
+        log_softmax[5] = 1
+        log_softmax[20] = in_shape[0]
+        log_softmax[21] = in_shape[1]
+
         embedding.append(flatten)
         embedding.append(linear)
+        embedding.append(log_softmax)
 
     def objective(self, trial: Trial):
         n = self.embedding_height
@@ -147,12 +143,9 @@ class Estimator:
 
         in_shape = self.first_in_shape
         for i in range(len(embedding)):
-            # TODO op is int now, change it in ifs below
             op = embedding[i][attribute_to_pos['op']]
             # CONV
             if op == 0:
-                if len(in_shape) != 3:
-                    return -1e9
                 h_in = in_shape[1]
                 w_in = in_shape[2]
 
@@ -202,8 +195,6 @@ class Estimator:
                 # SHAPE DOESN'T CHANGE
             # MAX POOL
             if op == 2:
-                if len(in_shape) != 3:
-                    return -1e9
                 h_in = in_shape[1]
                 w_in = in_shape[2]
 
@@ -245,9 +236,6 @@ class Estimator:
                     embedding[i][21] = in_shape[1]
             # LINEAR
             if op == 4:
-                if len(in_shape) != 2:
-                    return -1e9
-
                 embedding[i][0] = 1.0
                 out_channel = trial.suggest_int("linear_out_channel_" + str(i), 1, 256)
                 embedding[i][20] = 1
@@ -268,9 +256,6 @@ class Estimator:
                 # SHAPE DOESN'T CHANGE
             # BATCH NORM
             if op == 6:
-                if len(in_shape) != 3:
-                    return -1e9
-
                 embedding[i][20] = 1  # batch size
                 embedding[i][21] = in_shape[0]
                 embedding[i][22] = in_shape[1]
@@ -327,8 +312,6 @@ class Estimator:
                 # SHAPE DOESN'T CHANGE
             # ConvTranspose
             if op == 15:
-                if len(in_shape) != 3:
-                    return -1e9
                 h_in = in_shape[1]
                 w_in = in_shape[2]
 
@@ -362,7 +345,7 @@ class Estimator:
                 embedding[i][23] = w_out
 
                 in_shape = [out_channel, h_out, w_out]
-        self.__add_last_linear(in_shape, embedding, m)
+        self.__add_last_layer(in_shape, embedding, m)
         for i in range(len(embedding)):
             # generate bamboo
             if i != len(embedding) - 1:
@@ -375,6 +358,7 @@ class Estimator:
     # TODO this function has to create network from embedding and return some metrics of quality
     # TODO for example accuracy
     def __get_quality_from_embedding(self, embedding):
+        self.embeddings.append(embedding)
         graph = None
         try:
             graph = NeuralNetworkGraph.get_graph(embedding)
@@ -397,7 +381,7 @@ class Estimator:
             print('MODEL CREATED')
             # train model
             model.train()
-            n_epoch = 10
+            n_epoch = 3
 
             # mb configure optimizer here
             print('MODEL TRAINING STARTED')
@@ -424,24 +408,25 @@ class Estimator:
                     correct += pred.eq(target.data.view_as(pred)).sum()
             # return accuracy
             accuracy = 100. * correct.item() / len(self.test_dataloader.dataset)
-            os.makedirs('./estimator_generated_embeddings', exist_ok=True)
-            with open('./estimator_generated_embeddings/' + str(self.accuracy_non_zero_count) + '_' + str(
-                    accuracy) + '.txt', 'w+') as f:
-                f.write(json.dumps(embedding))
+            # os.makedirs('./estimator_generated_embeddings', exist_ok=True)
+            # with open('./estimator_generated_embeddings/' + str(self.accuracy_non_zero_count) + '_' + str(
+            #         accuracy) + '.txt', 'w+') as f:
+            #     f.write(json.dumps(embedding))
             self.accuracy_non_zero_count += 1
             return accuracy
         except Exception as e:
-            os.makedirs('./estimator_failed_generated_embeddings', exist_ok=True)
-            with open('./estimator_failed_generated_embeddings/' + str(self.error_happened_count) + '.txt', 'w+') as f:
-                f.write(json.dumps(embedding))
+            # os.makedirs('./estimator_failed_generated_embeddings', exist_ok=True)
+            # with open('./estimator_failed_generated_embeddings/' + str(self.error_happened_count) + '.txt', 'w+') as f:
+            #     f.write(json.dumps(embedding))
             self.error_happened_count += 1
+            # print(str(e))
             return -1e2
 
     def __pre_train(self):
         sampler = TPESampler()
         study = optuna.create_study(sampler=sampler, direction='maximize')
         # should do some limitation of pre train here for example count of trials or time limit
-        n_trials = 1000
+        n_trials = 10
         study.optimize(self.objective, n_trials=n_trials)
         return study
 

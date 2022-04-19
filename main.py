@@ -1,5 +1,6 @@
 import json
 import math
+import os
 import sys
 
 import torch
@@ -11,20 +12,22 @@ import torch.nn.functional as F
 from embedding.convert import Converter
 from embedding.graph import NeuralNetworkGraph, ATTRIBUTES_POS_COUNT
 
+
+
 # 0.emb = ALEXNET
-with open('./estimator/estimator_generated_embeddings/0_9.8.txt') as f:
-    embedding = json.load(f)
-
-for j in embedding:
-    a = j[:ATTRIBUTES_POS_COUNT]
-    for id, i in enumerate(a):
-        if i is not None:
-            print(id, i)
-    print('edges count: ' + str(j[ATTRIBUTES_POS_COUNT]))
-    print('####################\n')
-
-graph = NeuralNetworkGraph.get_graph(embedding)
-Converter(graph, filepath='./generated_net.py', model_name='Tmp')
+# with open('./estimator/estimator_generated_embeddings/0_9.8.txt') as f:
+#     embedding = json.load(f)
+#
+# for j in embedding:
+#     a = j[:ATTRIBUTES_POS_COUNT]
+#     for id, i in enumerate(a):
+#         if i is not None:
+#             print(id, i)
+#     print('edges count: ' + str(j[ATTRIBUTES_POS_COUNT]))
+#     print('####################\n')
+#
+# graph = NeuralNetworkGraph.get_graph(embedding)
+# Converter(graph, filepath='./generated_net.py', model_name='Tmp')
 
 # from generated_net import Tmp
 #
