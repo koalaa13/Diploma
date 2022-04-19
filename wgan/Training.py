@@ -89,9 +89,11 @@ if __name__ == '__main__':
         # pin_memory=True
     )
 
-    estimator = Estimator(options.embedding_width, options.embedding_height, train_dataloader, test_dataloader, device)
-    print(estimator.good_center)
-    print(estimator.bad_center)
+    estimator = Estimator(options.embedding_width, 10, train_dataloader, test_dataloader, device)
+    print(len(estimator.bad_center))
+    print(len(estimator.good_center))
+    print(len(estimator.good_center[0]))
+    print(len(estimator.bad_center[0]))
 
     optimizer_G = torch.optim.RMSprop(generator.parameters(), lr=options.lr)
     optimizer_D = torch.optim.RMSprop(discriminator.parameters(), lr=options.lr)
@@ -162,3 +164,6 @@ if __name__ == '__main__':
         transformer.de_transform_embedding(fake[0])
         with open("examples/generated_example", "w+") as f:
             print(fake, file=f)
+    torch.save(generator.state_dict(), './generator_weights')
+    torch.save(discriminator.state_dict(), './discriminator_weights')
+

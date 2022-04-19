@@ -21,7 +21,7 @@ from utils.DatasetTransformer import Transformer
 
 
 class Estimator:
-    def __init__(self, embedding_width, embedding_height, train_dataloader, test_dataloader, device):
+    def __init__(self, embedding_width, generated_layers_count, train_dataloader, test_dataloader, device):
         self.support_ops = ["Conv",
                             "LeakyRelu",
                             "MaxPool",
@@ -56,28 +56,28 @@ class Estimator:
         self.first_in_shape = [1, 28, 28]
         self.train_dataloader = train_dataloader
         self.test_dataloader = test_dataloader
-        self.good_center = [[0.0 for _ in range(embedding_width)] for _ in range(embedding_height)]
-        self.bad_center = [[0.0 for _ in range(embedding_width)] for _ in range(embedding_height)]
 
         self.embedding_width = embedding_width
-        self.embedding_height = embedding_height
+        self.generated_layers_count = generated_layers_count
         self.study = self.__pre_train()
 
         values, scores = _get_observation_pairs(self.study, ['big_dims_ops_count'], False, False)
         indices_below, indices_above = _split_observation_pairs(scores, self.study.sampler._gamma(len(scores)))
         self.good_indices = indices_below
         self.bad_indices = indices_above
-        self.transformer = Transformer(embedding_width, embedding_height)
+        self.transformer = Transformer(embedding_width, len(self.embeddings[0]))
         self.transformer.transform_embeddings(self.embeddings)
+        self.good_center = [[0.0 for _ in range(embedding_width)] for _ in range(len(self.embeddings[0]))]
+        self.bad_center = [[0.0 for _ in range(embedding_width)] for _ in range(len(self.embeddings[0]))]
         for ind in self.good_indices:
-            for i in range(embedding_height):
+            for i in range(len(self.embeddings[ind])):
                 for j in range(embedding_width):
                     self.good_center[i][j] += self.embeddings[ind][i][j]
         for ind in self.bad_indices:
-            for i in range(embedding_height):
+            for i in range(len(self.embeddings[ind])):
                 for j in range(embedding_width):
                     self.bad_center[i][j] += self.embeddings[ind][i][j]
-        for i in range(embedding_height):
+        for i in range(len(self.embeddings[0])):
             for j in range(embedding_width):
                 self.good_center[i][j] /= len(self.good_indices)
                 self.bad_center[i][j] /= len(self.bad_indices)
@@ -122,7 +122,7 @@ class Estimator:
         embedding.append(log_softmax)
 
     def objective(self, trial: Trial):
-        n = self.embedding_height
+        n = self.generated_layers_count
         m = self.embedding_width
         embedding = []
         for i in range(n):
@@ -381,7 +381,7 @@ class Estimator:
             print('MODEL CREATED')
             # train model
             model.train()
-            n_epoch = 3
+            n_epoch = 5
 
             # mb configure optimizer here
             print('MODEL TRAINING STARTED')
@@ -412,13 +412,13 @@ class Estimator:
             # with open('./estimator_generated_embeddings/' + str(self.accuracy_non_zero_count) + '_' + str(
             #         accuracy) + '.txt', 'w+') as f:
             #     f.write(json.dumps(embedding))
-            self.accuracy_non_zero_count += 1
+            # self.accuracy_non_zero_count += 1
             return accuracy
         except Exception as e:
             # os.makedirs('./estimator_failed_generated_embeddings', exist_ok=True)
             # with open('./estimator_failed_generated_embeddings/' + str(self.error_happened_count) + '.txt', 'w+') as f:
             #     f.write(json.dumps(embedding))
-            self.error_happened_count += 1
+            # self.error_happened_count += 1
             # print(str(e))
             return -1e2
 
@@ -426,7 +426,7 @@ class Estimator:
         sampler = TPESampler()
         study = optuna.create_study(sampler=sampler, direction='maximize')
         # should do some limitation of pre train here for example count of trials or time limit
-        n_trials = 10
+        n_trials = 100
         study.optimize(self.objective, n_trials=n_trials)
         return study
 
