@@ -62,9 +62,9 @@ from utils.DatasetTransformer import Transformer
 #     print('edges count: ' + str(j[ATTRIBUTES_POS_COUNT]))
 #     print('####################\n')
 
-# from generated_net import Tmp
-# from utils.DatasetTransformer import Transformer
-# from wgan.Generator import Generator
+from generated_net import Tmp
+from utils.DatasetTransformer import Transformer
+from wgan.Generator import Generator
 #
 # train_dataloader = torch.utils.data.DataLoader(
 #     torchvision.datasets.MNIST('./data/mnist',
@@ -90,38 +90,38 @@ from utils.DatasetTransformer import Transformer
 #     batch_size=1000,
 #     shuffle=True)
 #
-# cuda = torch.cuda.is_available()
-# device = torch.device('cuda:0') if cuda else torch.device('cpu')
-#
-# embedding_width = NODE_EMBEDDING_DIMENSION
-# embedding_height = 14
-# latent_dim = 100
-# output_generator_dim = embedding_height * embedding_width
-# obj_shape = (embedding_height, embedding_width)
-# generator_dims = [latent_dim, 128, 256, 512, 1024, output_generator_dim]
-# generator = Generator(generator_dims).to(device)
-# generator.load_state_dict(torch.load('./wgan/generator_weights'))
-# generator.eval()
-#
-# print('TRANSFORMATION STARTED')
-# transformer = Transformer(embedding_width, embedding_height)
-# transformer.transform_dataset('./data/nn_embedding',
-#
-#                               './data/nn_embedding_transformed')
-# print('TRANSFORMATION FINISHED')
-# print(transformer.mns)
-# print(transformer.mxs)
-#
-# print('GENERATING EMBEDDINGS')
-# os.makedirs('./generated', exist_ok=True)
-# its = 100000
-# z = torch.randn(its, latent_dim).to(device)
-# fake = generator(z, obj_shape).detach().cpu().numpy().tolist()
-# for i in range(its):
-#     transformer.de_transform_embedding(fake[i])
-#     with open('./generated/' + str(i) + '.txt', 'w+') as f:
-#         f.write(json.dumps(fake[i]))
-# print('GENERATING EMBEDDINGS FINISHED')
+cuda = torch.cuda.is_available()
+device = torch.device('cuda:0') if cuda else torch.device('cpu')
+
+embedding_width = NODE_EMBEDDING_DIMENSION
+embedding_height = 14
+latent_dim = 100
+output_generator_dim = embedding_height * embedding_width
+obj_shape = (embedding_height, embedding_width)
+generator_dims = [latent_dim, 128, 256, 512, 1024, output_generator_dim]
+generator = Generator(generator_dims).to(device)
+generator.load_state_dict(torch.load('./wgan/generator_weights'))
+generator.eval()
+
+print('TRANSFORMATION STARTED')
+transformer = Transformer(embedding_width, embedding_height)
+transformer.transform_dataset('./data/nn_embedding',
+
+                              './data/nn_embedding_transformed')
+print('TRANSFORMATION FINISHED')
+print(transformer.mns)
+print(transformer.mxs)
+
+print('GENERATING EMBEDDINGS')
+os.makedirs('./generated', exist_ok=True)
+its = 100000
+z = torch.randn(its, latent_dim).to(device)
+fake = generator(z, obj_shape).detach().cpu().numpy().tolist()
+for i in range(its):
+    transformer.de_transform_embedding(fake[i])
+    with open('./generated/' + str(i) + '.txt', 'w+') as f:
+        f.write(json.dumps(fake[i]))
+print('GENERATING EMBEDDINGS FINISHED')
 #
 # for i in range(its):
 #     print("ITERATION " + str(i) + " STARTED")

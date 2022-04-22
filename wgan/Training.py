@@ -1,7 +1,9 @@
 import argparse
+import json
 import os
 import sys
 
+import matplotlib.pyplot as plt
 import numpy
 import torchvision
 from torch.nn import BCELoss
@@ -90,7 +92,7 @@ if __name__ == '__main__':
     )
 
     estimator = Estimator(options.embedding_width, options.embedding_height - Estimator.additional_ops_count,
-                          train_dataloader, test_dataloader, device)
+                          train_dataloader, test_dataloader, device, '../estimator/saved_estimator')
     print(len(estimator.bad_center))
     print(len(estimator.good_center))
     print(len(estimator.good_center[0]))
@@ -101,6 +103,9 @@ if __name__ == '__main__':
 
     estimator_loss = BCELoss()
 
+    epochs = []
+    losses_G = []
+    losses_D = []
     batches_cnt = 0
     for epoch in range(options.n_epochs):
         for i, objs in enumerate(dataloader):
@@ -134,7 +139,6 @@ if __name__ == '__main__':
                 gen_objs = generator(z, obj_shape)
                 estimator_feedbacks = []
                 gen_objs_cnt = gen_objs.size(0)
-                # TODO there is some questions about normalization and de-normalization of dataset
                 for k in range(gen_objs_cnt):
                     estimator_feedbacks.append(float(int(estimator.check(gen_objs[k]))))
                 # mb minus feedback from TPE_Estimator
@@ -150,10 +154,26 @@ if __name__ == '__main__':
                         epoch, options.n_epochs, batches_cnt % len(dataloader), len(dataloader), loss_D.item(),
                         loss_G.item())
                 )
+                epochs.append(epoch)
+                losses_G.append(loss_G.item())
+                losses_D.append(loss_D.item())
 
             # if batches_cnt % options.sample_interval == 0:
             #     save_image(fake_objs.data[:25], "images/%d.png" % batches_cnt, nrow=5, normalize=True)
             batches_cnt += 1
+
+    with open('./epoches', 'w+') as f:
+        f.write(json.dumps(epochs))
+    with open('./losses_G', 'w+') as f:
+        f.write(json.dumps(losses_G))
+    with open('./losses_D', 'w+') as f:
+        f.write(json.dumps(losses_D))
+    legend = [plt.plot(epochs, losses_G, label='Generator Loss')[0],
+              plt.plot(epochs, losses_D, label='Discriminator Loss')[0]]
+    plt.xlabel('Epochs')
+    plt.ylabel('GAN parts loss')
+    plt.legend(handles=legend)
+    plt.savefig('GAN parts losses')
 
     need_example = True
     if need_example:
