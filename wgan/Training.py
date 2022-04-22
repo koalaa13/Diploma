@@ -89,7 +89,8 @@ if __name__ == '__main__':
         # pin_memory=True
     )
 
-    estimator = Estimator(options.embedding_width, 10, train_dataloader, test_dataloader, device)
+    estimator = Estimator(options.embedding_width, options.embedding_height - Estimator.additional_ops_count,
+                          train_dataloader, test_dataloader, device)
     print(len(estimator.bad_center))
     print(len(estimator.good_center))
     print(len(estimator.good_center[0]))
@@ -166,4 +167,3 @@ if __name__ == '__main__':
             print(fake, file=f)
     torch.save(generator.state_dict(), './generator_weights')
     torch.save(discriminator.state_dict(), './discriminator_weights')
-

@@ -21,7 +21,10 @@ from utils.DatasetTransformer import Transformer
 
 
 class Estimator:
-    def __init__(self, embedding_width, generated_layers_count, train_dataloader, test_dataloader, device):
+    additional_ops_count = 4
+
+    def __init__(self, embedding_width, generated_layers_count, train_dataloader, test_dataloader, device,
+                 pre_load_directory=None):
         self.support_ops = ["Conv",
                             "LeakyRelu",
                             "MaxPool",
@@ -59,12 +62,28 @@ class Estimator:
 
         self.embedding_width = embedding_width
         self.generated_layers_count = generated_layers_count
+
+        if pre_load_directory is not None:
+            with open(os.path.join(pre_load_directory, 'good_indices')) as f:
+                self.good_indices = json.load(f)
+            with open(os.path.join(pre_load_directory, 'bad_indices')) as f:
+                self.bad_indices = json.load(f)
+            with open(os.path.join(pre_load_directory, 'good_center')) as f:
+                self.good_center = json.load(f)
+            with open(os.path.join(pre_load_directory, 'bad_center')) as f:
+                self.bad_center = json.load(f)
+            for i, file in enumerate(os.listdir(pre_load_directory)):
+                if file.endswith('.emb'):
+                    with open(os.path.join(pre_load_directory, file)) as f:
+                        self.embeddings.append(json.load(f))
+            return
+
         self.study = self.__pre_train()
 
         values, scores = _get_observation_pairs(self.study, ['big_dims_ops_count'], False, False)
         indices_below, indices_above = _split_observation_pairs(scores, self.study.sampler._gamma(len(scores)))
-        self.good_indices = indices_below
-        self.bad_indices = indices_above
+        self.good_indices = indices_below.tolist()
+        self.bad_indices = indices_above.tolist()
         self.transformer = Transformer(embedding_width, len(self.embeddings[0]))
         self.transformer.transform_embeddings(self.embeddings)
         self.good_center = [[0.0 for _ in range(embedding_width)] for _ in range(len(self.embeddings[0]))]
@@ -453,3 +472,16 @@ class Estimator:
 
     def check(self, embedding):
         return self.__metrics(self.good_center, embedding) > self.__metrics(self.bad_center, embedding)
+
+    def save(self, directory):
+        with open(os.path.join(directory, 'good_indices'), 'w+') as f:
+            f.write(json.dumps(self.good_indices))
+        with open(os.path.join(directory, 'bad_indices'), 'w+') as f:
+            f.write(json.dumps(self.bad_indices))
+        with open(os.path.join(directory, 'good_center'), 'w+') as f:
+            f.write(json.dumps(self.good_center))
+        with open(os.path.join(directory, 'bad_center'), 'w+') as f:
+            f.write(json.dumps(self.bad_center))
+        for i, emb in enumerate(self.embeddings):
+            with open(os.path.join(directory, str(i) + '.emb'), 'w+') as f:
+                f.write(json.dumps(emb))

@@ -1,3 +1,5 @@
+import os
+
 import torch
 import torchvision
 
@@ -32,9 +34,9 @@ test_dataloader = torch.utils.data.DataLoader(
 cuda = torch.cuda.is_available()
 device = torch.device('cuda:0') if cuda else torch.device('cpu')
 estimator = Estimator(NODE_EMBEDDING_DIMENSION, 10, train_dataloader, test_dataloader, device)
-print(len(estimator.bad_center))
-print(len(estimator.good_center))
-print(len(estimator.good_center[0]))
-print(len(estimator.bad_center[0]))
+os.makedirs('./saved_estimator', exist_ok=True)
+estimator.save('./saved_estimator')
+# print(len(estimator.bad_center))
+# print(len(estimator.good_center))
 # print(estimator.good_center)
 # print(estimator.bad_center)

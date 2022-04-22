@@ -46,10 +46,9 @@ class Transformer:
     def de_transform_embedding(self, embedding):
         for i in range(len(embedding)):
             for j in range(len(embedding[i])):
-                if self.mns[j] == self.mxs[j]:
-                    embedding[i][j] = self.mns[j]
-                else:
-                    embedding[i][j] = (embedding[i][j] + 1) * (self.mxs[j] - self.mns[j]) / 2 + self.mns[j]
+                embedding[i][j] = (embedding[i][j] + 1) * (self.mxs[j] - self.mns[j]) / 2 + self.mns[j]
+                if embedding[i][j] < 0.0:
+                    embedding[i][j] = None
 
     def transform_dataset(self, dataset_folder, transformed_dataset_folder):
         embeddings = []
