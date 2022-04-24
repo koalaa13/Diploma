@@ -1,3 +1,4 @@
+import copy
 import json
 import math
 import os
@@ -13,44 +14,10 @@ import torch.nn.functional as F
 from embedding.convert import Converter
 from embedding.graph import NeuralNetworkGraph, ATTRIBUTES_POS_COUNT, NODE_EMBEDDING_DIMENSION
 from utils.DatasetTransformer import Transformer
-
-# embedding_width = NODE_EMBEDDING_DIMENSION
-# embedding_height = 14
-# transformer = Transformer(embedding_width, embedding_height)
-# transformer.transform_dataset('./data/nn_embedding',
-#                               './data/nn_embedding_transformed')
-# for i in range(57):
-#     with open('./data/nn_embedding_transformed/' + str(i) + '.emb') as f:
-#         embedding = json.load(f)
-#     transformer.de_transform_embedding(embedding)
-#     for j in range(len(embedding) - 1):
-#         if embedding[j][ATTRIBUTES_POS_COUNT] != 1:
-#             print(i, j)
-#             print('edges count is not one')
-#             sys.exit(1)
-#         ok = embedding[j][ATTRIBUTES_POS_COUNT + 1] == j + 1
-#         for k in range(ATTRIBUTES_POS_COUNT + 2, len(embedding[j])):
-#             ok &= embedding[j][k] is None
-#         if not ok:
-#             print(i, j)
-#             print('incorrect edges')
-#             sys.exit(1)
-#     j = len(embedding) - 1
-#     if embedding[j][ATTRIBUTES_POS_COUNT] != 0:
-#         print(i, j)
-#         print('edges count is not one')
-#         sys.exit(1)
-#     ok = True
-#     for k in range(ATTRIBUTES_POS_COUNT + 1, len(embedding[j])):
-#         ok &= embedding[j][k] is None
-#     if not ok:
-#         print(i, j)
-#         print('incorrect edges')
-#         sys.exit(1)
-# print('dataset is ok')
+import hiddenlayer as hl
 
 # 0.emb = ALEXNET
-# with open('./generated/0.txt') as f:
+# with open('./data/nn_embedding/0.emb') as f:
 #     embedding = json.load(f)
 #
 # for id1, j in enumerate(embedding):
@@ -64,32 +31,33 @@ from utils.DatasetTransformer import Transformer
 
 from generated_net import Tmp
 from utils.DatasetTransformer import Transformer
+from wgan.Discriminator import Discriminator
 from wgan.Generator import Generator
-#
-# train_dataloader = torch.utils.data.DataLoader(
-#     torchvision.datasets.MNIST('./data/mnist',
-#                                train=True,
-#                                download=True,
-#                                transform=torchvision.transforms.Compose([
-#                                    torchvision.transforms.ToTensor(),
-#                                    torchvision.transforms.Normalize(
-#                                        (0.1307,), (0.3081,))
-#                                ])),
-#     batch_size=64,
-#     shuffle=True)
-#
-# test_dataloader = torch.utils.data.DataLoader(
-#     torchvision.datasets.MNIST("./data/mnist",
-#                                train=False,
-#                                download=True,
-#                                transform=torchvision.transforms.Compose([
-#                                    torchvision.transforms.ToTensor(),
-#                                    torchvision.transforms.Normalize(
-#                                        (0.1307,), (0.3081,))
-#                                ])),
-#     batch_size=1000,
-#     shuffle=True)
-#
+
+train_dataloader = torch.utils.data.DataLoader(
+    torchvision.datasets.MNIST('./data/mnist',
+                               train=True,
+                               download=True,
+                               transform=torchvision.transforms.Compose([
+                                   torchvision.transforms.ToTensor(),
+                                   torchvision.transforms.Normalize(
+                                       (0.1307,), (0.3081,))
+                               ])),
+    batch_size=64,
+    shuffle=True)
+
+test_dataloader = torch.utils.data.DataLoader(
+    torchvision.datasets.MNIST("./data/mnist",
+                               train=False,
+                               download=True,
+                               transform=torchvision.transforms.Compose([
+                                   torchvision.transforms.ToTensor(),
+                                   torchvision.transforms.Normalize(
+                                       (0.1307,), (0.3081,))
+                               ])),
+    batch_size=1000,
+    shuffle=True)
+
 cuda = torch.cuda.is_available()
 device = torch.device('cuda:0') if cuda else torch.device('cpu')
 
@@ -99,30 +67,83 @@ latent_dim = 100
 output_generator_dim = embedding_height * embedding_width
 obj_shape = (embedding_height, embedding_width)
 generator_dims = [latent_dim, 128, 256, 512, 1024, output_generator_dim]
-generator = Generator(generator_dims).to(device)
+generator = Generator(generator_dims, obj_shape).to(device)
 generator.load_state_dict(torch.load('./wgan/generator_weights'))
 generator.eval()
+# z = torch.randn(1, latent_dim).to(device)
+# hl_graph = hl.build_graph(generator, z, transforms=None)
+# hl_graph.theme = hl.graph.THEMES['blue'].copy()
+# hl_graph.save('GAN Generator', format='png')
 
-print('TRANSFORMATION STARTED')
-transformer = Transformer(embedding_width, embedding_height)
-transformer.transform_dataset('./data/nn_embedding',
+discriminator_dims = [output_generator_dim, 512, 256]
+discriminator = Discriminator(discriminator_dims).to(device)
+z = torch.randn(1, embedding_height, embedding_width).to(device)
+hl_graph = hl.build_graph(discriminator, z, transforms=None)
+hl_graph.theme = hl.graph.THEMES['blue'].copy()
+hl_graph.save('GAN Discriminator', format='png')
 
-                              './data/nn_embedding_transformed')
-print('TRANSFORMATION FINISHED')
-print(transformer.mns)
-print(transformer.mxs)
 
-print('GENERATING EMBEDDINGS')
-os.makedirs('./generated', exist_ok=True)
-its = 100000
-z = torch.randn(its, latent_dim).to(device)
-fake = generator(z, obj_shape).detach().cpu().numpy().tolist()
-for i in range(its):
-    transformer.de_transform_embedding(fake[i])
-    with open('./generated/' + str(i) + '.txt', 'w+') as f:
-        f.write(json.dumps(fake[i]))
-print('GENERATING EMBEDDINGS FINISHED')
+
 #
+# print('TRANSFORMATION STARTED')
+# transformer = Transformer(embedding_width, embedding_height)
+# transformer.transform_dataset('./data/nn_embedding',
+#                               './data/nn_embedding_transformed')
+# print('TRANSFORMATION FINISHED')
+# print(transformer.mns)
+# print(transformer.mxs)
+#
+# eps = 1e-8
+#
+# for file in os.listdir('./data/nn_embedding'):
+#     with open(os.path.join('./data/nn_embedding/', file)) as f:
+#         original_embedding = json.load(f)
+#     with open(os.path.join('./data/nn_embedding_transformed/', file)) as f:
+#         transformed_embedding = json.load(f)
+#     with open(os.path.join('./data/nn_embedding_transformed/', file)) as f:
+#         norm_embedding = json.load(f)
+#     transformer.de_transform_embedding(transformed_embedding)
+#     assert len(original_embedding) == embedding_height
+#     assert len(transformed_embedding) == embedding_height
+#     assert len(norm_embedding) == embedding_height
+#     if len(transformed_embedding) != len(original_embedding):
+#         print('Lens are not equal ' + str(file))
+#         sys.exit(1)
+#     for j in range(len(transformed_embedding)):
+#         if len(transformed_embedding[j]) != len(original_embedding[j]):
+#             print('Lens ' + str(j) + ' are not equal ' + str(file))
+#             sys.exit(2)
+#         for k in range(len(transformed_embedding[j])):
+#             if transformed_embedding[j][k] != original_embedding[j][k]:
+#                 if transformed_embedding[j][k] is None or original_embedding[j][k] is None:
+#                     print(file, j, k)
+#                     print(original_embedding[j][19])
+#                     print(norm_embedding[j][k])
+#                     print(transformed_embedding[j][k])
+#                     print(original_embedding[j][k])
+#                     print(transformer.mns[k])
+#                     print(transformer.mxs[k])
+#                     sys.exit(3)
+#                 if math.fabs(transformed_embedding[j][k] - original_embedding[j][k]) > eps:
+#                     print(file, j, k)
+#                     print(norm_embedding[j][k])
+#                     print(transformed_embedding[j][k])
+#                     print(original_embedding[j][k])
+#                     print(transformer.mns[k])
+#                     print(transformer.mxs[k])
+#                     sys.exit(4)
+
+# print('GENERATING EMBEDDINGS')
+# os.makedirs('./generated', exist_ok=True)
+# its = 10000
+# z = torch.randn(its, latent_dim).to(device)
+# fake = generator(z, obj_shape).detach().cpu().numpy().tolist()
+# for i in range(its):
+#     transformer.de_transform_embedding(fake[i])
+#     with open('./generated/' + str(i) + '.txt', 'w+') as f:
+#         f.write(json.dumps(fake[i]))
+# print('GENERATING EMBEDDINGS FINISHED')
+
 # for i in range(its):
 #     print("ITERATION " + str(i) + " STARTED")
 #     try:

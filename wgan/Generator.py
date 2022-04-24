@@ -2,8 +2,9 @@ import torch.nn as nn
 
 
 class Generator(nn.Module):
-    def __init__(self, dims):
+    def __init__(self, dims, obj_shape):
         super(Generator, self).__init__()
+        self.obj_shape = obj_shape
 
         def block(in_feat, out_feat, normalize=True):
             layers = [nn.Linear(in_feat, out_feat)]
@@ -19,8 +20,8 @@ class Generator(nn.Module):
         modules.append(nn.Tanh())
         self.model = nn.Sequential(*modules)
 
-    def forward(self, z, obj_shape):
+    def forward(self, z):
         # mb resize result here
         img = self.model(z)
-        img = img.view(img.shape[0], *obj_shape)
+        img = img.view(img.shape[0], *self.obj_shape)
         return img

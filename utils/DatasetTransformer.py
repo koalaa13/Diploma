@@ -23,8 +23,10 @@ class Transformer:
         for k in range(len(embeddings)):
             for i in range(self.embedding_height):
                 for j in range(self.embedding_width):
+                    assert embeddings[k][i][j] is not None
                     if self.mxs[j] - self.mns[j] != 0:
-                        embeddings[k][i][j] = 2 * (embeddings[k][i][j] - self.mns[j]) / (self.mxs[j] - self.mns[j]) - 1
+                        embeddings[k][i][j] = 2.0 * (embeddings[k][i][j] - self.mns[j]) / (
+                                    self.mxs[j] - self.mns[j]) - 1.0
                         assert -1.0 <= embeddings[k][i][j] <= 1.0
                     else:
                         embeddings[k][i][j] = self.mns[j]
@@ -35,6 +37,7 @@ class Transformer:
                 if embedding[i][j] is None:
                     embedding[i][j] = self.null_as_number
                 else:
+                    assert embedding[i][j] >= 0.0
                     embedding[i][j] = float(embedding[i][j])
         for i in range(self.embedding_height):
             if i < len(embedding):
@@ -46,7 +49,7 @@ class Transformer:
     def de_transform_embedding(self, embedding):
         for i in range(len(embedding)):
             for j in range(len(embedding[i])):
-                embedding[i][j] = (embedding[i][j] + 1) * (self.mxs[j] - self.mns[j]) / 2 + self.mns[j]
+                embedding[i][j] = (embedding[i][j] + 1) * (self.mxs[j] - self.mns[j]) / 2.0 + self.mns[j]
                 if embedding[i][j] < 0.0:
                     embedding[i][j] = None
 
@@ -57,6 +60,6 @@ class Transformer:
                 embedding = json.load(f)
             embeddings.append(embedding)
         self.transform_embeddings(embeddings)
-        for i in range(len(embeddings)):
-            with open(os.path.join(transformed_dataset_folder, str(i) + '.emb'), 'w+') as f:
+        for i, file in enumerate(os.listdir(dataset_folder)):
+            with open(os.path.join(transformed_dataset_folder, file), 'w+') as f:
                 f.write(json.dumps(embeddings[i]))

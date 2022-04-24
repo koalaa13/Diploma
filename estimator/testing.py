@@ -33,11 +33,11 @@ test_dataloader = torch.utils.data.DataLoader(
 
 cuda = torch.cuda.is_available()
 device = torch.device('cuda:0') if cuda else torch.device('cpu')
-estimator = Estimator(NODE_EMBEDDING_DIMENSION, 10, train_dataloader, test_dataloader, device, './saved_estimator')
-# os.makedirs('./saved_estimator', exist_ok=True)
-# estimator.save('./saved_estimator')
-for i in range(len(estimator.bad_center)):
-    print(i, estimator.good_center[i][ATTRIBUTES_POS_COUNT], estimator.good_center[i][ATTRIBUTES_POS_COUNT + 1])
+estimator = Estimator(NODE_EMBEDDING_DIMENSION, 10, train_dataloader, test_dataloader, device)
+os.makedirs('./saved_estimator', exist_ok=True)
+estimator.save('./saved_estimator')
+# for i in range(len(estimator.bad_center)):
+#     print(i, estimator.good_center[i][ATTRIBUTES_POS_COUNT], estimator.good_center[i][ATTRIBUTES_POS_COUNT + 1])
 # print(len(estimator.bad_center))
 # print(len(estimator.good_center))
 # print(estimator.good_center)

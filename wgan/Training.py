@@ -50,7 +50,7 @@ if __name__ == '__main__':
     generator_dims = [options.latent_dim, 128, 256, 512, 1024, output_generator_dim]
     discriminator_dims = [output_generator_dim, 512, 256]
 
-    generator = Generator(generator_dims).to(device)
+    generator = Generator(generator_dims, obj_shape).to(device)
     discriminator = Discriminator(discriminator_dims).to(device)
 
     train_dataloader = torch.utils.data.DataLoader(
@@ -118,7 +118,7 @@ if __name__ == '__main__':
 
             z = torch.randn(objs.shape[0], options.latent_dim).to(device)
 
-            fake_objs = generator(z, obj_shape).detach()
+            fake_objs = generator(z).detach()
             loss_D = -torch.mean(discriminator(real_objs)) + torch.mean(discriminator(fake_objs))
 
             loss_D.backward()
@@ -136,7 +136,7 @@ if __name__ == '__main__':
 
                 optimizer_G.zero_grad()
 
-                gen_objs = generator(z, obj_shape)
+                gen_objs = generator(z)
                 estimator_feedbacks = []
                 gen_objs_cnt = gen_objs.size(0)
                 for k in range(gen_objs_cnt):
@@ -181,7 +181,7 @@ if __name__ == '__main__':
         numpy.set_printoptions(threshold=sys.maxsize)
         os.makedirs("examples", exist_ok=True)
         z = torch.randn(1, options.latent_dim).to(device)
-        fake = generator(z, obj_shape).detach().cpu().numpy()
+        fake = generator(z).detach().cpu().numpy()
         transformer.de_transform_embedding(fake[0])
         with open("examples/generated_example", "w+") as f:
             print(fake, file=f)

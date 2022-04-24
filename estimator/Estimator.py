@@ -445,7 +445,7 @@ class Estimator:
         sampler = TPESampler()
         study = optuna.create_study(sampler=sampler, direction='maximize')
         # should do some limitation of pre train here for example count of trials or time limit
-        n_trials = 100
+        n_trials = 1000
         study.optimize(self.objective, n_trials=n_trials)
         return study
 
