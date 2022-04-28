@@ -28,10 +28,10 @@ if __name__ == '__main__':
     print(device)
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--latent_dim", type=int, default=100, help="dimensionality of the latent space")
-    parser.add_argument("--embedding_width", type=int, default=NODE_EMBEDDING_DIMENSION, help="width of an embedding")
+    parser.add_argument("--latent_dim", type=int, default=5, help="dimensionality of the latent space")
+    parser.add_argument("--embedding_width", type=int, default=1, help="width of an embedding")
     parser.add_argument("--embedding_height", type=int, default=14, help="height of an embedding")
-    parser.add_argument("--lr", type=float, default=0.00005, help="learning rate")
+    parser.add_argument("--lr", type=float, default=0.0001, help="learning rate")
     parser.add_argument("--batch_size", type=int, default=10, help="size of a batch to train")
     parser.add_argument("--n_epochs", type=int, default=1000, help="epochs count")
     parser.add_argument("--clip_value", type=float, default=0.01, help="lower and upper bound for disc weights")
@@ -47,8 +47,8 @@ if __name__ == '__main__':
     output_generator_dim = options.embedding_width * options.embedding_height
     obj_shape = (options.embedding_height, options.embedding_width)
 
-    generator_dims = [options.latent_dim, 128, 256, 512, 1024, output_generator_dim]
-    discriminator_dims = [output_generator_dim, 512, 256]
+    generator_dims = [options.latent_dim, 10, output_generator_dim]
+    discriminator_dims = [output_generator_dim, 10, 5]
 
     generator = Generator(generator_dims, obj_shape).to(device)
     discriminator = Discriminator(discriminator_dims).to(device)
@@ -78,30 +78,31 @@ if __name__ == '__main__':
         shuffle=True)
 
     print("DATASET TRANSFORMATION STARTED")
+    os.makedirs('../data/nn_super_small_embedding_transformed', exist_ok=True)
     transformer = Transformer(options.embedding_width, options.embedding_height)
-    transformer.transform_dataset('../data/nn_embedding',
-                                  '../data/nn_embedding_transformed')
+    transformer.transform_dataset('../data/nn_super_small_embedding',
+                                  '../data/nn_super_small_embedding_transformed')
     print("DATASET TRANSFORMATION FINISHED")
 
     dataloader = torch.utils.data.DataLoader(
-        NNEmbeddingDataset("../data/nn_embedding_transformed"),
+        NNEmbeddingDataset('../data/nn_super_small_embedding_transformed'),
         batch_size=options.batch_size,
         shuffle=True,
         # num_workers=8,
         # pin_memory=True
     )
 
-    estimator = Estimator(options.embedding_width, options.embedding_height - Estimator.additional_ops_count,
-                          train_dataloader, test_dataloader, device, '../estimator/saved_estimator')
-    print(len(estimator.bad_center))
-    print(len(estimator.good_center))
-    print(len(estimator.good_center[0]))
-    print(len(estimator.bad_center[0]))
+    # estimator = Estimator(options.embedding_width, options.embedding_height - Estimator.additional_ops_count,
+    #                       train_dataloader, test_dataloader, device, '../estimator/saved_estimator')
+    # print(len(estimator.bad_center))
+    # print(len(estimator.good_center))
+    # print(len(estimator.good_center[0]))
+    # print(len(estimator.bad_center[0]))
 
     optimizer_G = torch.optim.RMSprop(generator.parameters(), lr=options.lr)
     optimizer_D = torch.optim.RMSprop(discriminator.parameters(), lr=options.lr)
 
-    estimator_loss = BCELoss()
+    # estimator_loss = BCELoss()
 
     epochs = []
     losses_G = []
@@ -137,13 +138,14 @@ if __name__ == '__main__':
                 optimizer_G.zero_grad()
 
                 gen_objs = generator(z)
-                estimator_feedbacks = []
-                gen_objs_cnt = gen_objs.size(0)
-                for k in range(gen_objs_cnt):
-                    estimator_feedbacks.append(float(int(estimator.check(gen_objs[k]))))
+                # estimator_feedbacks = []
+                # gen_objs_cnt = gen_objs.size(0)
+                # for k in range(gen_objs_cnt):
+                #     estimator_feedbacks.append(float(int(estimator.check(gen_objs[k]))))
                 # mb minus feedback from TPE_Estimator
-                loss_G = -torch.mean(discriminator(gen_objs)) + estimator_loss(torch.tensor(estimator_feedbacks),
-                                                                               torch.ones(gen_objs_cnt))
+                loss_G = -torch.mean(discriminator(gen_objs))\
+                         # + estimator_loss(torch.tensor(estimator_feedbacks),
+                         #                                                       torch.ones(gen_objs_cnt))
 
                 loss_G.backward()
                 optimizer_G.step()
@@ -158,8 +160,12 @@ if __name__ == '__main__':
                 losses_G.append(loss_G.item())
                 losses_D.append(loss_D.item())
 
-            # if batches_cnt % options.sample_interval == 0:
-            #     save_image(fake_objs.data[:25], "images/%d.png" % batches_cnt, nrow=5, normalize=True)
+            if batches_cnt % options.sample_interval == 0:
+                fake = fake_objs.data.cpu().numpy().tolist()
+                for jj in range(len(fake)):
+                    transformer.de_transform_embedding(fake[jj])
+                with open('examples/generated_example' + str(batches_cnt), 'w+') as f:
+                    f.write(json.dumps(fake))
             batches_cnt += 1
 
     with open('./epoches', 'w+') as f:
@@ -175,15 +181,17 @@ if __name__ == '__main__':
     plt.legend(handles=legend)
     plt.savefig('GAN parts losses')
 
-    need_example = True
-    if need_example:
-        generator.eval()
-        numpy.set_printoptions(threshold=sys.maxsize)
-        os.makedirs("examples", exist_ok=True)
-        z = torch.randn(1, options.latent_dim).to(device)
-        fake = generator(z).detach().cpu().numpy()
-        transformer.de_transform_embedding(fake[0])
-        with open("examples/generated_example", "w+") as f:
-            print(fake, file=f)
+    # need_example = True
+    # if need_example:
+    #     generator.eval()
+    #     numpy.set_printoptions(threshold=sys.maxsize)
+    #     os.makedirs("examples", exist_ok=True)
+    #     examples_count = 10
+    #     z = torch.randn(examples_count, options.latent_dim).to(device)
+    #     fake = generator(z).detach().cpu().numpy()
+    #     for i in range(examples_count):
+    #         transformer.de_transform_embedding(fake[i])
+    #         with open("examples/generated_example" + str(i), "w+") as f:
+    #             print(fake[i], file=f)
     torch.save(generator.state_dict(), './generator_weights')
     torch.save(discriminator.state_dict(), './discriminator_weights')

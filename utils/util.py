@@ -1,14 +1,21 @@
+import json
 import os
 import shutil
+import sys
 
-src_dir = '../estimator/estimator_generated_embeddings'
-dst_dir = '../data/nn_embedding_transformed'
+from utils.Mapper import Mapper
 
-for file in os.listdir(src_dir):
-    acc = float(file[file.find('_') + 1:file.rfind('.')])
-    if acc > 80.0:
-        shutil.copy(os.path.join(src_dir, file), dst_dir)
-i = 0
-for file in os.listdir(dst_dir):
-    os.rename(os.path.join(dst_dir, file), os.path.join(dst_dir, str(i) + '.emb'))
-    i += 1
+# m = Mapper()
+# os.makedirs('../data/big_dims_parts', exist_ok=True)
+# os.makedirs('../data/small_dims_parts', exist_ok=True)
+# m.split_to_blocks('../data/nn_embedding', '../data/big_dims_parts', '../data/small_dims_parts')
+for i in range(805):
+    with open('../data/big_dims_parts/' + str(i) + '.emb') as f:
+        big = json.load(f)
+    with open('../data/small_dims_parts/' + str(i) + '.emb') as f:
+        small = json.load(f)
+    for j in big:
+        if j[19] is not None:
+            assert j[22] is not None
+    for j in small:
+        assert j[22] is None

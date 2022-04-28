@@ -1,3 +1,4 @@
+import copy
 import importlib
 import json
 import math
@@ -85,17 +86,18 @@ class Estimator:
         self.good_indices = indices_below.tolist()
         self.bad_indices = indices_above.tolist()
         self.transformer = Transformer(embedding_width, len(self.embeddings[0]))
-        self.transformer.transform_embeddings(self.embeddings)
+        self.normalized_embeddings = copy.deepcopy(self.embeddings)
+        self.transformer.transform_embeddings(self.normalized_embeddings)
         self.good_center = [[0.0 for _ in range(embedding_width)] for _ in range(len(self.embeddings[0]))]
         self.bad_center = [[0.0 for _ in range(embedding_width)] for _ in range(len(self.embeddings[0]))]
         for ind in self.good_indices:
             for i in range(len(self.embeddings[ind])):
                 for j in range(embedding_width):
-                    self.good_center[i][j] += self.embeddings[ind][i][j]
+                    self.good_center[i][j] += self.normalized_embeddings[ind][i][j]
         for ind in self.bad_indices:
             for i in range(len(self.embeddings[ind])):
                 for j in range(embedding_width):
-                    self.bad_center[i][j] += self.embeddings[ind][i][j]
+                    self.bad_center[i][j] += self.normalized_embeddings[ind][i][j]
         for i in range(len(self.embeddings[0])):
             for j in range(embedding_width):
                 self.good_center[i][j] /= len(self.good_indices)
@@ -427,11 +429,11 @@ class Estimator:
                     correct += pred.eq(target.data.view_as(pred)).sum()
             # return accuracy
             accuracy = 100. * correct.item() / len(self.test_dataloader.dataset)
-            # os.makedirs('./estimator_generated_embeddings', exist_ok=True)
-            # with open('./estimator_generated_embeddings/' + str(self.accuracy_non_zero_count) + '_' + str(
-            #         accuracy) + '.txt', 'w+') as f:
-            #     f.write(json.dumps(embedding))
-            # self.accuracy_non_zero_count += 1
+            os.makedirs('./estimator_generated_embeddings', exist_ok=True)
+            with open('./estimator_generated_embeddings/' + str(self.accuracy_non_zero_count) + '_' + str(
+                    accuracy) + '.txt', 'w+') as f:
+                f.write(json.dumps(embedding))
+            self.accuracy_non_zero_count += 1
             return accuracy
         except Exception as e:
             # os.makedirs('./estimator_failed_generated_embeddings', exist_ok=True)
@@ -471,7 +473,7 @@ class Estimator:
         return math.sqrt(res)
 
     def check(self, embedding):
-        return self.__metrics(self.good_center, embedding) > self.__metrics(self.bad_center, embedding)
+        return self.__metrics(self.good_center, embedding) < self.__metrics(self.bad_center, embedding)
 
     def save(self, directory):
         with open(os.path.join(directory, 'good_indices'), 'w+') as f:
