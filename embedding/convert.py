@@ -8,6 +8,7 @@ from embedding.mapping import NetworkMapping
 
 class Converter:
     """Convert input graph to neural network."""
+
     def __init__(self, graph, filepath='models/my_model.py', model_name="Model"):
         self.graph = graph
         self.operations = nn.ModuleList()
@@ -22,7 +23,8 @@ class Converter:
         self.__default_input_shape = None
         self.__init_first_sequence()
         self._graph_seq = nx.DiGraph()
-        self._graph_seq.add_node(1, **{'op': self.graph.nodes[self.first_dim_node]['op'], 'node': self.graph.nodes[self.first_dim_node]})
+        self._graph_seq.add_node(1, **{'op': self.graph.nodes[self.first_dim_node]['op'],
+                                       'node': self.graph.nodes[self.first_dim_node]})
         self.node_to_sequence = {self.first_dim_node: 1}
         self._top_sorted_nodes = []
         self._top_sort_visited = set()
@@ -34,14 +36,19 @@ class Converter:
             self.__write_forward(file)
 
     def __init_first_sequence(self):
-        if self.graph.nodes[self.first_dim_node]['op'] == 'Conv':
-            self.__default_input_shape = '3'
-            self.sequences = {1: [NetworkMapping.map_node(self.graph.nodes[self.first_dim_node], 'in_shape', self.out_dim[self.first_dim_node])]}
+        if self.graph.nodes[self.first_dim_node]['op'] == 'Conv' or self.graph.nodes[self.first_dim_node][
+            'op'] == 'ConvTranspose' \
+                or self.graph.nodes[self.first_dim_node]['op'] == 'BatchNorm' or self.graph.nodes[self.first_dim_node][
+            'op'] == 'MaxPool':
+            self.__default_input_shape = '1'
+            self.sequences = {1: [NetworkMapping.map_node(self.graph.nodes[self.first_dim_node], 'in_shape',
+                                                          self.out_dim[self.first_dim_node])]}
         else:
-            self.__default_input_shape = '224 * 224'
+            self.__default_input_shape = '28 * 28'
             self.is_flatten_needed = False
             self.sequences = {
-                1: [NetworkMapping.map_node(self.graph.nodes[self.first_dim_node], 'in_shape', self.out_dim[self.first_dim_node])]
+                1: [NetworkMapping.map_node(self.graph.nodes[self.first_dim_node], 'in_shape',
+                                            self.out_dim[self.first_dim_node])]
             }
 
     def __create_layers(self, cur_node):
@@ -62,7 +69,8 @@ class Converter:
                 layer = NetworkMapping.map_node(node, old_dim, self.out_dim[v])
             if len(edges) > 1 \
                     or len(self.graph.pred[v]) > 1 \
-                    or (node['op'] in ['Concat', 'Pad', 'ReduceMean', 'Slice', 'Reshape', 'Transpose'] and len(self.graph.pred[v]) <= 1):
+                    or (node['op'] in ['Concat', 'Pad', 'ReduceMean', 'Slice', 'Reshape', 'Transpose'] and len(
+                self.graph.pred[v]) <= 1):
                 current_sequence = len(self.sequences) + 1
                 if current_sequence not in self._graph_seq.nodes:
                     if node['op'] in ['Pad', 'ReduceMean', 'Slice', 'Reshape', 'Transpose']:

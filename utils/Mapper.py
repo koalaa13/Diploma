@@ -39,7 +39,7 @@ class Mapper:
     def __get_big_and_small(embedding):
         first_2d = -1
         for i in range(len(embedding)):
-            if embedding[i][22] is None:
+            if embedding[i][19] == node_to_ops['Flatten']:
                 first_2d = i
                 break
         if first_2d == -1:
@@ -78,7 +78,7 @@ class Mapper:
                 embedding = json.load(f)
             for row in embedding:
                 if row[attribute_to_pos['op']] is None:
-                    super_small_embedding.append(None)
+                    super_small_embedding.append([None])
                 else:
                     super_small_embedding.append([corteges.index(tuple(self.__get_small_row(row)))])
             with open(os.path.join(dst, file), 'w+') as f:
@@ -86,16 +86,12 @@ class Mapper:
 
     def de_map_from_super_small_embedding(self, embedding, in_shape):
         res = []
+        print('IN SHAPE = ' + str(in_shape))
         for jj in range(len(embedding)):
             cur_row = [None] * NODE_EMBEDDING_DIMENSION
             ind = int(embedding[jj][0] + 0.5)
             cort = self.corteges[ind]
             cur_row[attribute_to_pos['op']] = cort[0]
-            if jj != len(embedding) - 1:
-                cur_row[ATTRIBUTES_POS_COUNT] = 1
-                cur_row[ATTRIBUTES_POS_COUNT + 1] = jj + 1
-            else:
-                cur_row[ATTRIBUTES_POS_COUNT] = 0
             if cort[0] == 0:  # CONV
                 if len(in_shape) != 3:
                     raise Exception('Incorrect shape')
@@ -193,11 +189,12 @@ class Mapper:
                     raise Exception('Incorrect shape')
 
                 cur_row[0] = 1.0
-                cur_row[21] = 1
+                cur_row[20] = 1
                 out_channel = cort[1]
                 cur_row[21] = out_channel
 
                 in_shape = [in_shape[0], out_channel]
+                print('Linear out shape = ' + str(in_shape))
             if cort[0] == 5:  # SIGMOID
                 if len(in_shape) == 2:
                     cur_row[20] = in_shape[0]
@@ -292,4 +289,4 @@ class Mapper:
                     cur_row[22] = in_shape[1]
                     cur_row[23] = in_shape[2]
             res.append(cur_row)
-        return res
+        return res, in_shape
